@@ -94,11 +94,11 @@ pub fn then(parser_a: Parser(i, a), parser_b: Parser(i, b)) -> Parser(i, b) {
   }
 }
 
-pub fn tag(tag: i) -> Parser(i, i) {
+pub fn item(item: i) -> Parser(i, i) {
   fn(input: Input(i)) {
     case input {
-      [head, ..next] if head == tag -> ok(next, head)
-      _ -> Error(ParseError(input, ["tag"]))
+      [head, ..next] if head == item -> ok(next, head)
+      _ -> Error(ParseError(input, []))
     }
   }
 }
@@ -164,7 +164,7 @@ pub fn lazy(f: fn() -> Parser(i, a)) -> Parser(i, a) {
 }
 
 pub fn char(c: Char) -> Parser(Char, Char) {
-  tag(c)
+  item(c)
 }
 
 pub fn string(str: String) -> Parser(Char, String) {

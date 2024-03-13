@@ -15,7 +15,7 @@ pub fn hello_world_test() {
   |> pears.parse("abcd")
   |> should.equal(Ok(Parsed(input: ["d"], value: "abc")))
 
-  pears.tag(1)([1, 2, 3])
+  pears.item(1)([1, 2, 3])
   |> should.equal(Ok(Parsed(input: [2, 3], value: 1)))
 }
 
