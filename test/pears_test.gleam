@@ -102,3 +102,13 @@ pub fn between_test() {
   |> pears.parse("(b)")
   |> should.equal(Error(ParseError(["b", ")"], ["a"])))
 }
+
+pub fn seq_test() {
+  pears.seq([pears.char("a"), pears.char("b"), pears.char("c")])
+  |> pears.parse("abc")
+  |> should.equal(Ok(Parsed([], ["a", "b", "c"])))
+
+  pears.seq([pears.char("a"), pears.char("b"), pears.char("c")])
+  |> pears.parse("ab")
+  |> should.equal(Error(ParseError([], ["\"c\""])))
+}

@@ -98,7 +98,7 @@ pub fn item(item: i) -> Parser(i, i) {
   fn(input: Input(i)) {
     case input {
       [head, ..next] if head == item -> ok(next, head)
-      _ -> Error(ParseError(input, []))
+      _ -> Error(ParseError(input, [string.inspect(item)]))
     }
   }
 }
@@ -111,6 +111,26 @@ pub fn pair(
     use parsed_1 <- try(p1(in))
     use parsed_2 <- try(p2(parsed_1.input))
     ok(parsed_2.input, #(parsed_1.value, parsed_2.value))
+  }
+}
+
+/// Applies the given parsers in sequence and returns a list of the results
+///
+pub fn seq(parsers: List(Parser(i, a))) -> Parser(i, List(a)) {
+  fn(input: Input(i)) { do_sequence(parsers, input, []) }
+}
+
+fn do_sequence(
+  parsers: List(Parser(i, a)),
+  input: Input(i),
+  acc: List(a),
+) -> ParseResult(i, List(a)) {
+  case parsers {
+    [] -> ok(input, list.reverse(acc))
+    [parser, ..rest] -> {
+      use parsed <- try(parser(input))
+      do_sequence(rest, parsed.input, [parsed.value, ..acc])
+    }
   }
 }
 
