@@ -1,0 +1,11 @@
+name = "pears"
+version = "0.1.0"
+description = "A parser combinator library for Gleam"
+licences = ["MIT"]
+repository = { type = "github", user = "lukad", repo = "pears" }
+
+[dependencies]
+gleam_stdlib = "~> 0.34 or ~> 1.0"
+
+[dev-dependencies]
+gleeunit = "~> 1.0"
