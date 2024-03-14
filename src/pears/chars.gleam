@@ -5,7 +5,12 @@ import pears.{type Parser, ParseError, ok}
 import pears/input.{type Input}
 import pears/combinators.{just, many0, many1, map, one_of, satisfying}
 
-/// A grapheme cluster is a user-perceived character
+/// Build an `Input(Char)` from a string.
+pub fn input(s: String) -> Input(Char) {
+  string.to_graphemes(s)
+}
+
+/// A grapheme is a user-perceived character.
 pub type Char =
   String
 
