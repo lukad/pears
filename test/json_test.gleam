@@ -3,10 +3,10 @@ import gleam/int
 import gleam/string
 import gleeunit/should
 import pears.{type ParseResult, type Parser, Parsed}
-import pears/chars.{type Char, char, digit, string}
+import pears/chars.{type Char, digit, string}
 import pears/combinators.{
   alt, between, choice, eof, just, lazy, left, many0, map, maybe, none_of,
-  one_of, pair, recognize, right, sep_by0, to,
+  one_of, pair, recognize, right, sep_by0, seq, to,
 }
 import gleam/dict.{type Dict}
 
@@ -74,13 +74,41 @@ fn value_parser() -> Parser(Char, Json) {
 
   let null = to(string("null"), Null)
 
-  let str = fn() -> Parser(_, String) {
-    let quote = char("\"")
-    let value =
-      many0(none_of(["\""]))
-      |> map(string.concat)
-    between(value, quote, quote)
-  }
+  let hex_digit =
+    one_of([
+      "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e",
+      "f", "A", "B", "C", "D", "E", "F",
+    ])
+
+  let unicode_escape_digits =
+    recognize(seq([hex_digit, hex_digit, hex_digit, hex_digit]))
+
+  let escape =
+    just("\\")
+    |> right(
+      choice([
+        just("\\"),
+        just("/"),
+        just("\""),
+        to(just("b"), "\u{0008}"),
+        to(just("f"), "\u{000C}"),
+        to(just("n"), "\n"),
+        to(just("r"), "\r"),
+        to(just("t"), "\t"),
+        map(right(just("u"), unicode_escape_digits), fn(value) {
+          let assert Ok(number) = int.base_parse(string.concat(value), 16)
+          let assert Ok(codepoint) = string.utf_codepoint(number)
+          string.from_utf_codepoints([codepoint])
+        }),
+      ]),
+    )
+
+  let str =
+    none_of(["\""])
+    |> alt(escape)
+    |> many0()
+    |> map(string.concat)
+    |> between(just("\""), just("\""))
 
   let value = lazy(value_parser)
 
@@ -90,7 +118,7 @@ fn value_parser() -> Parser(Char, Json) {
     |> map(Array)
 
   let key_value =
-    str()
+    str
     |> left(symbol(":"))
     |> pair(value)
 
@@ -104,7 +132,7 @@ fn value_parser() -> Parser(Char, Json) {
     |> between(symbol("{"), symbol("}"))
     |> map(Obj)
 
-  choice([num, bool, null, map(str(), Str), array, obj])
+  choice([num, bool, null, map(str, Str), array, obj])
   |> padded()
 }
 
