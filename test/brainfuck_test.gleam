@@ -1,7 +1,11 @@
 import gleam/list
+import gleam/string
 import gleeunit/should
 import pears.{type ParseResult, type Parser, Parsed}
-import pears/input.{type Char}
+import pears/chars.{type Char, char, string}
+import pears/combinators.{
+  alt, between, eof, lazy, left, many0, many1, map, none_of, right, to,
+}
 
 type Program =
   List(Instruction)
@@ -23,63 +27,101 @@ fn count(xs: List(a), value: a) -> Int {
   })
 }
 
+fn comment() -> Parser(Char, List(Char)) {
+  many0(none_of(["+", "-", ">", "<", ",", ".", "[", "]"]))
+}
+
 fn instructions_parser() -> Parser(Char, Program) {
+  let padded = fn(p) { right(comment(), p) }
   let add =
-    pears.many1(pears.alt(pears.char("+"), pears.char("-")))
-    |> pears.map(fn(x) { Add(count(x, "+") - count(x, "-")) })
+    alt(char("+"), char("-"))
+    |> many1()
+    |> map(fn(x) { Add(count(x, "+") - count(x, "-")) })
 
   let move =
-    pears.many1(pears.alt(pears.char(">"), pears.char("<")))
-    |> pears.map(fn(x) { Mov(count(x, ">") - count(x, "<")) })
+    alt(char(">"), char("<"))
+    |> many1()
+    |> map(fn(x) { Mov(count(x, ">") - count(x, "<")) })
 
-  let read =
-    pears.char(",")
-    |> pears.to(Read)
-
-  let write =
-    pears.char(".")
-    |> pears.to(Write)
+  let read = to(char(","), Read)
+  let write = to(char("."), Write)
 
   let loop =
-    pears.between(
-      pears.char("["),
-      pears.char("]"),
-      pears.lazy(instructions_parser),
-    )
-    |> pears.map(Loop)
+    lazy(instructions_parser)
+    |> between(char("["), char("]"))
+    |> map(Loop)
 
   add
-  |> pears.alt(move)
-  |> pears.alt(read)
-  |> pears.alt(write)
-  |> pears.alt(loop)
-  |> pears.many0()
+  |> alt(move)
+  |> alt(read)
+  |> alt(write)
+  |> alt(loop)
+  |> padded()
+  |> many0()
 }
 
 fn bf_parser() -> Parser(Char, Program) {
-  pears.left(instructions_parser(), pears.eof())
+  instructions_parser()
+  |> left(comment())
+  |> left(eof())
 }
 
 fn parse(input: String) -> ParseResult(_, Program) {
-  pears.parse(bf_parser(), input)
+  input
+  |> string.to_graphemes()
+  |> bf_parser()
 }
 
-pub fn parser_test() {
+pub fn parse_loops_test() {
   parse("[]")
   |> should.equal(Ok(Parsed([], [Loop([])])))
+}
 
-  parse("<+++->><>>,.[.]")
-  |> should.equal(
-    Ok(Parsed([], [Mov(-1), Add(2), Mov(3), Read, Write, Loop([Write])])),
+pub fn parse_simple_instructions_test() {
+  parse("<><+++->><>>,.")
+  |> should.equal(Ok(Parsed([], [Mov(-1), Add(2), Mov(3), Read, Write])))
+}
+
+pub fn parse_hello_world_test() {
+  parse(
+    "+[-->-[>>+>-----<<]<--<---]>-.>>>+.>>..+++[.>]<<<<.+++.------.<<-.>>>>+.",
   )
-
-  parse("++++++++[>++++++++<-]>.")
   |> should.equal(
     Ok(
       Parsed([], [
-        Add(8),
-        Loop([Mov(1), Add(8), Mov(-1), Add(-1)]),
+        Add(1),
+        Loop([
+          Add(-2),
+          Mov(1),
+          Add(-1),
+          Loop([Mov(2), Add(1), Mov(1), Add(-5), Mov(-2)]),
+          Mov(-1),
+          Add(-2),
+          Mov(-1),
+          Add(-3),
+        ]),
         Mov(1),
+        Add(-1),
+        Write,
+        Mov(3),
+        Add(1),
+        Write,
+        Mov(2),
+        Write,
+        Write,
+        Add(3),
+        Loop([Write, Mov(1)]),
+        Mov(-4),
+        Write,
+        Add(3),
+        Write,
+        Add(-6),
+        Write,
+        Mov(-2),
+        Add(-1),
+        Write,
+        Mov(4),
+        Add(1),
         Write,
       ]),
     ),
