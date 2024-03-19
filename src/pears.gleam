@@ -53,8 +53,8 @@
 //// let a_or_b_parser = alt(just("a"), just("b"))
 //// parse_string("abc", a_or_b_parser)
 //// // => Ok(Parsed(["b", "c"], "a"))
-//// parse_string("cba", a_or_b_parser)
-//// // => Ok(Parsed(["b", "a"], "c"))
+//// parse_string("bac", a_or_b_parser)
+//// // => Ok(Parsed(["a", "c"], "b"))
 //// ```
 ////
 //// In cases where there are more than two options, we can use the `choice` combinator:
