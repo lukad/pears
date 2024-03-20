@@ -1,16 +1,15 @@
 import gleam/list
-import gleam/string
-import gleeunit/should
-import pears.{type ParseResult, type Parser, Parsed}
-import pears/chars.{type Char, char, string}
+import pears.{type Parser}
+import pears/chars.{type Char, char}
 import pears/combinators.{
   alt, between, eof, lazy, left, many0, many1, map, none_of, right, to,
 }
+import helpers.{should_parse}
 
-type Program =
+pub type Program =
   List(Instruction)
 
-type Instruction {
+pub type Instruction {
   Add(Int)
   Mov(Int)
   Read
@@ -66,64 +65,67 @@ fn bf_parser() -> Parser(Char, Program) {
   |> left(eof())
 }
 
-fn parse(input: String) -> ParseResult(_, Program) {
-  input
-  |> string.to_graphemes()
-  |> bf_parser()
+pub fn parse_simple_instructions_test() {
+  bf_parser()
+  |> should_parse("+", [Add(1)])
+  |> should_parse("-", [Add(-1)])
+  |> should_parse(">", [Mov(1)])
+  |> should_parse("<", [Mov(-1)])
+  |> should_parse(",", [Read])
+  |> should_parse(".", [Write])
+}
+
+pub fn parse_multiple_instructions_test() {
+  bf_parser()
+  |> should_parse("<><+++->><>>,.", [Mov(-1), Add(2), Mov(3), Read, Write])
 }
 
 pub fn parse_loops_test() {
-  parse("[]")
-  |> should.equal(Ok(Parsed([], [Loop([])])))
-}
-
-pub fn parse_simple_instructions_test() {
-  parse("<><+++->><>>,.")
-  |> should.equal(Ok(Parsed([], [Mov(-1), Add(2), Mov(3), Read, Write])))
+  bf_parser()
+  |> should_parse("[]", [Loop([])])
+  |> should_parse("[+]", [Loop([Add(1)])])
+  |> should_parse("[+[-]]", [Loop([Add(1), Loop([Add(-1)])])])
 }
 
 pub fn parse_hello_world_test() {
-  parse(
+  bf_parser()
+  |> should_parse(
     "+[-->-[>>+>-----<<]<--<---]>-.>>>+.>>..+++[.>]<<<<.+++.------.<<-.>>>>+.",
-  )
-  |> should.equal(
-    Ok(
-      Parsed([], [
-        Add(1),
-        Loop([
-          Add(-2),
-          Mov(1),
-          Add(-1),
-          Loop([Mov(2), Add(1), Mov(1), Add(-5), Mov(-2)]),
-          Mov(-1),
-          Add(-2),
-          Mov(-1),
-          Add(-3),
-        ]),
+    [
+      Add(1),
+      Loop([
+        Add(-2),
         Mov(1),
         Add(-1),
-        Write,
-        Mov(3),
-        Add(1),
-        Write,
-        Mov(2),
-        Write,
-        Write,
-        Add(3),
-        Loop([Write, Mov(1)]),
-        Mov(-4),
-        Write,
-        Add(3),
-        Write,
-        Add(-6),
-        Write,
-        Mov(-2),
-        Add(-1),
-        Write,
-        Mov(4),
-        Add(1),
-        Write,
+        Loop([Mov(2), Add(1), Mov(1), Add(-5), Mov(-2)]),
+        Mov(-1),
+        Add(-2),
+        Mov(-1),
+        Add(-3),
       ]),
-    ),
+      Mov(1),
+      Add(-1),
+      Write,
+      Mov(3),
+      Add(1),
+      Write,
+      Mov(2),
+      Write,
+      Write,
+      Add(3),
+      Loop([Write, Mov(1)]),
+      Mov(-4),
+      Write,
+      Add(3),
+      Write,
+      Add(-6),
+      Write,
+      Mov(-2),
+      Add(-1),
+      Write,
+      Mov(4),
+      Add(1),
+      Write,
+    ],
   )
 }

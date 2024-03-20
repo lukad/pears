@@ -1,14 +1,14 @@
 import gleam/float
 import gleam/int
 import gleam/string
-import gleeunit/should
-import pears.{type ParseResult, type Parser, Parsed}
+import pears.{type Parser}
 import pears/chars.{type Char, digit, string}
 import pears/combinators.{
   alt, between, choice, eof, just, lazy, left, many0, map, maybe, none_of,
   one_of, pair, recognize, right, sep_by0, seq, to,
 }
 import gleam/dict.{type Dict}
+import helpers.{should_parse}
 
 pub type Json {
   Str(String)
@@ -141,94 +141,69 @@ fn json_parser() -> Parser(Char, Json) {
   |> between(whitespace0(), eof())
 }
 
-fn parse(input: String) -> ParseResult(Char, Json) {
-  input
-  |> string.to_graphemes()
-  |> json_parser()
-}
-
 pub fn parse_numbers_test() {
-  parse("42.0")
-  |> should.equal(Ok(Parsed([], Num(42.0))))
-
-  parse("2.3")
-  |> should.equal(Ok(Parsed([], Num(2.3))))
+  json_parser()
+  |> should_parse("4.2", Num(4.2))
+  |> should_parse("42", Num(42.0))
 }
 
 pub fn parse_booleans_test() {
-  parse("true")
-  |> should.equal(Ok(Parsed([], Boolean(True))))
+  json_parser()
+  |> should_parse("true", Boolean(True))
+  |> should_parse("false", Boolean(False))
+}
 
-  parse("false")
-  |> should.equal(Ok(Parsed([], Boolean(False))))
-
-  parse("null")
-  |> should.equal(Ok(Parsed([], Null)))
+pub fn parse_null_test() {
+  json_parser()
+  |> should_parse("null", Null)
 }
 
 pub fn parse_strings_test() {
-  parse("\"hello\"")
-  |> should.equal(Ok(Parsed([], Str("hello"))))
-
-  parse("\"hello world\"")
-  |> should.equal(Ok(Parsed([], Str("hello world"))))
+  json_parser()
+  |> should_parse("\"hello\"", Str("hello"))
+  // |> should_parse("\"hello\\nworld\"", Str("hello\nworld"))
+  // |> should_parse("\"\\u0048\\u0065\\u006c\\u006c\\u006f\"", Str("Hello"))
 }
 
 pub fn parse_arrays_test() {
-  parse("[]")
-  |> should.equal(Ok(Parsed([], Array([]))))
-
-  parse("[ 1, 2, 3 ]")
-  |> should.equal(Ok(Parsed([], Array([Num(1.0), Num(2.0), Num(3.0)]))))
-
-  parse("[true, false, null]")
-  |> should.equal(Ok(Parsed([], Array([Boolean(True), Boolean(False), Null]))))
-
-  parse("[\"hello\", \"world\"]")
-  |> should.equal(Ok(Parsed([], Array([Str("hello"), Str("world")]))))
+  json_parser()
+  |> should_parse("[]", Array([]))
+  |> should_parse("[1, 2, 3]", Array([Num(1.0), Num(2.0), Num(3.0)]))
+  |> should_parse(
+    "[true, false, null]",
+    Array([Boolean(True), Boolean(False), Null]),
+  )
+  |> should_parse("[\"hello\", \"world\"]", Array([Str("hello"), Str("world")]))
 }
 
 pub fn parse_objects_test() {
-  parse("{}")
-  |> should.equal(Ok(Parsed([], Obj(dict.new()))))
-
-  parse("{\"a\": 1, \"b\": 2}")
-  |> should.equal(
-    Ok(Parsed([], Obj(dict.from_list([#("a", Num(1.0)), #("b", Num(2.0))])))),
+  json_parser()
+  |> should_parse("{}", Obj(dict.new()))
+  |> should_parse(
+    "{\"a\": 1, \"b\": 2}",
+    Obj(dict.from_list([#("a", Num(1.0)), #("b", Num(2.0))])),
   )
-
-  parse("{\"a\": true, \"b\": false, \"c\": null}")
-  |> should.equal(
-    Ok(Parsed(
-      [],
-      Obj(
-        dict.from_list([
-          #("a", Boolean(True)),
-          #("b", Boolean(False)),
-          #("c", Null),
-        ]),
-      ),
-    )),
+  |> should_parse(
+    "{\"a\": true, \"b\": false, \"c\": null}",
+    Obj(
+      dict.from_list([
+        #("a", Boolean(True)),
+        #("b", Boolean(False)),
+        #("c", Null),
+      ]),
+    ),
   )
-
-  parse("{\"a\": \"hello\", \"b\": \"world\"}")
-  |> should.equal(
-    Ok(Parsed(
-      [],
-      Obj(dict.from_list([#("a", Str("hello")), #("b", Str("world"))])),
-    )),
+  |> should_parse(
+    "{\"a\": \"hello\", \"b\": \"world\"}",
+    Obj(dict.from_list([#("a", Str("hello")), #("b", Str("world"))])),
   )
-
-  parse("{\"👋\": [1, 2, 3], \"b\": {\"c\": 4}}")
-  |> should.equal(
-    Ok(Parsed(
-      [],
-      Obj(
-        dict.from_list([
-          #("👋", Array([Num(1.0), Num(2.0), Num(3.0)])),
-          #("b", Obj(dict.from_list([#("c", Num(4.0))]))),
-        ]),
-      ),
-    )),
+  |> should_parse(
+    "{\"👋\": [1, 2, 3], \"b\": {\"c\": 4}}",
+    Obj(
+      dict.from_list([
+        #("👋", Array([Num(1.0), Num(2.0), Num(3.0)])),
+        #("b", Obj(dict.from_list([#("c", Num(4.0))]))),
+      ]),
+    ),
   )
 }

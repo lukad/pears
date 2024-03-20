@@ -13,11 +13,10 @@
 ////
 //// ```gleam
 //// parse_string("abc", a_parser)
-//// // => Ok(Parsed(["b", "c"], "a"))
+//// // => Ok(Parsed(_, "a"))
 //// ```
 ////
-//// It returns a `Result` that gives us the remaining input (if any) and the parsed value when successful.
-//// Here the remaining input is `["b", "c"]` and the parsed value is `"a"`.
+//// It returns a `Result` that gives us the the parsed value and the remaining input.
 ////
 //// Under the hood all `parse_string` does is convert the input string into a list of graphemes and then
 //// call given parser, which is just a function, passing the input to it.
@@ -27,7 +26,7 @@
 //// ```gleam
 //// let input = string.to_graphemes("abc")
 //// a_parser()(input)
-//// // => Ok(Parsed(["b", "c"], "a"))
+//// // => Ok(Parsed(_, "a"))
 //// ```
 ////
 //// ### Combinators
@@ -40,7 +39,7 @@
 //// ```gleam
 //// let ab_parser = pair(just("a"), just("b"))
 //// parse_string("abc", ab_parser)
-//// // => Ok(Parsed(["c"], [#("a", "b")]))
+//// // => Ok(Parsed(_, #("a", "b")))
 //// ```
 ////
 //// The `pair` combinator takes two parsers and returns a new parser that runs the first parser and then the second
@@ -52,9 +51,9 @@
 //// ```gleam
 //// let a_or_b_parser = alt(just("a"), just("b"))
 //// parse_string("abc", a_or_b_parser)
-//// // => Ok(Parsed(["b", "c"], "a"))
+//// // => Ok(Parsed(_, "a"))
 //// parse_string("bac", a_or_b_parser)
-//// // => Ok(Parsed(["a", "c"], "b"))
+//// // => Ok(Parsed(_, "b"))
 //// ```
 ////
 //// In cases where there are more than two options, we can use the `choice` combinator:
@@ -62,11 +61,11 @@
 //// ```gleam
 //// let a_b_or_c_parser = choice(just("a"), just("b"), just("c"))
 //// parse_string("abc", a_b_or_c_parser)
-//// // => Ok(Parsed(["b", "c"], "a"))
+//// // => Ok(Parsed(_, "a"))
 //// parse_string("bca", a_b_or_c_parser)
-//// // => Ok(Parsed(["c", "a"], "b"))
+//// // => Ok(Parsed(_, "b"))
 //// parse_string("cab", a_b_or_c_parser)
-//// // => Ok(Parsed(["a", "b"], "c"))
+//// // => Ok(Parsed(_, "c"))
 //// ```
 ////
 //// The next crucial combinators are `many0` and `many1`.
@@ -75,11 +74,11 @@
 //// ```gleam
 //// let abc0_parser = many0(a_b_or_c_parser)
 //// parse_string("abc", abc0_parser)
-//// // => Ok(Parsed([], ["a", "b", "c"]))
+//// // => Ok(Parsed(_, ["a", "b", "c"]))
 //// parse_string("cab", abc0_parser)
-//// // => Ok(Parsed([], ["c", "a", "b"]))
+//// // => Ok(Parsed(_, ["c", "a", "b"]))
 //// parse_string("abcbcacab", abc0_parser)
-//// // => Ok(Parsed([], ["a", "b", "c", "b", "c", "a", "c", "a", "b"]))
+//// // => Ok(Parsed(_, ["a", "b", "c", "b", "c", "a", "c", "a", "b"]))
 //// ```
 ////
 //// Sometimes we want to parse something and then ignore the result,
@@ -90,7 +89,7 @@
 //// ```gleam
 //// let a_followed_by_b_parser = left(just("a"), just("b"))
 //// parse_string("abc", a_followed_by_b_parser)
-//// // => Ok(Parsed(["c"], "a"))
+//// // => Ok(Parsed(_, "a"))
 //// ```
 ////
 //// The `right` combinator works the same way but ignores the result of the second parser.
@@ -98,7 +97,7 @@
 //// ```gleam
 //// let b_preceeded_by_a_parser = right(just("a"), just("b"))
 //// parse_string("abc", b_preceeded_by_a_parser)
-//// // => Ok(Parsed(["c"], "b"))
+//// // => Ok(Parsed(_, "b"))
 //// ```
 ////
 //// These building blocks are enough to build many combinators that can parse complex data structures.
@@ -108,7 +107,7 @@
 //// ```
 //// let comma_separated_letters = sep_by0(a_or_b_or_c_parser, just(","))
 //// parse_string("a,b,c", comma_separated_letters)
-//// // => Ok(Parsed([], ["a", "b", "c"]))
+//// // => Ok(Parsed(_, ["a", "b", "c"]))
 //// ```
 ////
 //// ### Transforming the results
@@ -150,7 +149,7 @@
 ////   |> map(Letters)
 ////
 //// parse_string("abc", letters_parser)
-//// // => Ok(Parsed([], Letters([Letter.A, Letter.B, Letter.C])))
+//// // => Ok(Parsed(_, Letters([Letter.A, Letter.B, Letter.C])))
 //// ```
 ////
 //// Let's add the `Other` case to our parser, for that we can use the satisfying combinator which takes a function
@@ -171,7 +170,7 @@
 ////  |> map(Letters)
 ////
 //// parse_string("abcd", letters_parser)
-//// // => Ok(Parsed(["d"], Letters([Letter.A, Letter.B, Letter.C, Letter.Other("d")]))
+//// // => Ok(Parsed(_, Letters([Letter.A, Letter.B, Letter.C, Letter.Other("d")]))
 //// ```
 ////
 //// ### More examples
@@ -179,7 +178,7 @@
 //// Please have a look at the tests for more complex examples, such as parsing JSON or Brainf*ck.
 
 import gleam/string
-import pears/input.{type Input}
+import pears/input.{type Input, Input}
 
 /// Returned by a parser when it is successful. It contains the remaining input and the parsed value.
 pub type Parsed(i, a) {
@@ -187,7 +186,8 @@ pub type Parsed(i, a) {
 }
 
 pub type ParseError(i) {
-  ParseError(input: Input(i), expected: List(String))
+  UnexpectedEndOfInput(input: Input(i), expected: List(String))
+  UnexpectedToken(input: Input(i), expected: List(String), found: i)
 }
 
 /// The result of a parser. It is either a `Parsed` or a `ParseError`.
@@ -200,7 +200,8 @@ pub type Parser(i, a) =
 
 /// Helper function that takes a parser and an input and runs the parser on the input.
 pub fn parse(i: List(i), p: Parser(i, a)) -> ParseResult(i, a) {
-  p(i)
+  Input(tokens: i, cursor: 0)
+  |> p()
 }
 
 /// Helper function that takes a string and a parser and runs the parser on the string.

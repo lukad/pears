@@ -1,13 +1,14 @@
 import gleam/int
 import gleam/string
 import gleam/list
-import pears.{type Parser, ParseError, ok}
-import pears/input.{type Input}
+import pears.{type Parser, UnexpectedEndOfInput, UnexpectedToken, ok}
+import pears/input.{type Input, Input}
 import pears/combinators.{just, many0, many1, map, one_of, satisfying}
 
 /// Creates an `Input(Char)` from a string.
 pub fn input(s: String) -> Input(Char) {
-  string.to_graphemes(s)
+  let tokens = string.to_graphemes(s)
+  Input(tokens, 0)
 }
 
 /// A grapheme is a user-perceived character.
@@ -36,18 +37,17 @@ pub fn char(c: Char) -> Parser(Char, Char) {
 
 /// Parses a given string.
 pub fn string(str: String) -> Parser(Char, String) {
-  fn(input: Input(Char)) {
+  fn(in: Input(Char)) {
     let s = string.to_graphemes(str)
     let length = list.length(s)
-    case list.length(input) >= length {
-      True -> {
-        let candidate = list.take(input, length)
-        case candidate == s {
-          True -> ok(list.drop(input, length), str)
-          False -> Error(ParseError(input, [str]))
+    let candidate = input.get_n(in, length)
+    case candidate == s {
+      True -> ok(input.next_n(in, length), str)
+      False ->
+        case candidate {
+          [] -> Error(UnexpectedEndOfInput(in, [str]))
+          [head, ..] -> Error(UnexpectedToken(in, [str], head))
         }
-      }
-      False -> Error(ParseError(input, [str]))
     }
   }
 }

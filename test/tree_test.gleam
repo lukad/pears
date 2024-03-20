@@ -1,8 +1,7 @@
-import gleam/string
-import gleeunit/should
-import pears.{type ParseResult, type Parser, Parsed}
-import pears/chars.{type Char, number, string}
+import pears.{type Parser}
+import pears/chars.{type Char, number}
 import pears/combinators.{alt, between, eof, just, lazy, left, map, sep_by0}
+import helpers.{should_parse}
 
 pub type Tree(a) {
   Leaf(a)
@@ -20,28 +19,17 @@ fn tree_parser() -> Parser(Char, Tree(Int)) {
   alt(leaf, node)
 }
 
-fn parse(input: String) -> ParseResult(Char, Tree(Int)) {
-  input
-  |> string.to_graphemes()
-  |> left(tree_parser(), eof())
+fn parser() -> Parser(Char, Tree(Int)) {
+  left(tree_parser(), eof())
 }
 
 pub fn parse_tree_test() {
-  "1"
-  |> parse()
-  |> should.equal(Ok(Parsed([], Leaf(1))))
-
-  "[1,2,3]"
-  |> parse()
-  |> should.equal(Ok(Parsed([], Node([Leaf(1), Leaf(2), Leaf(3)]))))
-
-  "[1,[2,3],4]"
-  |> parse()
-  |> should.equal(
-    Ok(Parsed([], Node([Leaf(1), Node([Leaf(2), Leaf(3)]), Leaf(4)]))),
+  parser()
+  |> should_parse("1", Leaf(1))
+  |> should_parse("[1,2,3]", Node([Leaf(1), Leaf(2), Leaf(3)]))
+  |> should_parse(
+    "[1,[2,3],4]",
+    Node([Leaf(1), Node([Leaf(2), Leaf(3)]), Leaf(4)]),
   )
-
-  "[]"
-  |> parse()
-  |> should.equal(Ok(Parsed([], Node([]))))
+  |> should_parse("[]", Node([]))
 }

@@ -2,8 +2,21 @@ import gleam/list
 import gleam/string
 import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
-import pears.{type ParseResult, type Parser, ParseError, Parsed, ok}
+import pears.{
+  type ParseError, type ParseResult, type Parser, Parsed, UnexpectedEndOfInput,
+  UnexpectedToken, ok,
+}
 import pears/input.{type Input}
+
+fn consume_token(
+  in: Input(i),
+  f: fn(i) -> ParseResult(i, a),
+) -> ParseResult(i, a) {
+  case input.get(in) {
+    None -> Error(UnexpectedEndOfInput(in, ["any token"]))
+    Some(value) -> f(value)
+  }
+}
 
 /// Maps the result of a parser to a new value using a mapper function.
 pub fn map(p: Parser(i, a), fun: fn(a) -> b) -> Parser(i, b) {
@@ -11,6 +24,29 @@ pub fn map(p: Parser(i, a), fun: fn(a) -> b) -> Parser(i, b) {
     p(input)
     |> result.map(fn(parsed) {
       Parsed(input: parsed.input, value: fun(parsed.value))
+    })
+  }
+}
+
+/// Maps the error of a parser to a new error using a mapper function.
+pub fn map_error(
+  p: Parser(i, a),
+  fun: fn(ParseError(i)) -> ParseError(i),
+) -> Parser(i, a) {
+  fn(input: Input(i)) {
+    p(input)
+    |> result.map_error(fun)
+  }
+}
+
+pub fn labelled(parser: Parser(i, a), label: String) -> Parser(i, a) {
+  fn(input) {
+    parser(input)
+    |> result.map_error(fn(err: ParseError(i)) {
+      case err {
+        UnexpectedEndOfInput(_, _) -> err
+        UnexpectedToken(in, _, error) -> UnexpectedToken(in, [label], error)
+      }
     })
   }
 }
@@ -33,19 +69,17 @@ pub fn alt(parser_1: Parser(i, a), parser_2: Parser(i, a)) -> Parser(i, a) {
 /// Consumes any single item from the input except for the end of file.
 pub fn any() -> Parser(i, i) {
   fn(in: Input(i)) {
-    case input.get(in) {
-      None -> Error(ParseError(in, ["any"]))
-      Some(#(value, next)) -> ok(next, value)
-    }
+    use token <- consume_token(in)
+    ok(input.next(in), token)
   }
 }
 
 /// Consumes the end of the input and returns a Nil value. Fails if there is any input left.
 pub fn eof() -> Parser(i, Nil) {
   fn(in: Input(i)) {
-    case input.at_end(in) {
-      True -> ok(in, Nil)
-      False -> Error(ParseError(in, ["EOF"]))
+    case input.get(in) {
+      None -> ok(in, Nil)
+      Some(token) -> Error(UnexpectedToken(in, ["EOF"], token))
     }
   }
 }
@@ -58,22 +92,28 @@ pub type Predicate(i) =
 pub fn satisfying(f: Predicate(i)) -> Parser(i, i) {
   fn(in: Input(i)) {
     case input.get(in) {
-      None -> Error(ParseError(in, ["satisfying"]))
-      Some(#(value, next)) ->
+      None -> Error(UnexpectedEndOfInput(in, ["satifying predicate"]))
+      Some(value) -> {
         case f(value) {
-          True -> ok(next, value)
-          False -> Error(ParseError(in, ["satisfying"]))
+          True -> ok(input.next(in), value)
+          False -> Error(UnexpectedToken(in, ["satisfying predicate"], value))
         }
+      }
     }
   }
 }
 
 /// Consumes a single item from the input that is equal to the given item.
 pub fn just(item: i) -> Parser(i, i) {
-  fn(input: Input(i)) {
-    case input {
-      [head, ..next] if head == item -> ok(next, head)
-      _ -> Error(ParseError(input, [string.inspect(item)]))
+  fn(in: Input(i)) {
+    case input.get(in) {
+      None -> Error(UnexpectedEndOfInput(in, [string.inspect(item)]))
+      Some(head) if head == item -> {
+        Ok(Parsed(input: input.next(in), value: item))
+      }
+      Some(head) -> {
+        Error(UnexpectedToken(in, [string.inspect(item)], head))
+      }
     }
   }
 }
@@ -185,6 +225,13 @@ pub fn lazy(f: fn() -> Parser(i, a)) -> Parser(i, a) {
 /// Consumes an item that is included in the given list.
 pub fn one_of(items: List(i)) -> Parser(i, i) {
   satisfying(fn(c) { list.contains(items, c) })
+  |> map_error(fn(err) {
+    let expected = list.map(items, string.inspect)
+    case err {
+      UnexpectedToken(in, _, token) -> UnexpectedToken(in, expected, token)
+      UnexpectedEndOfInput(in, _) -> UnexpectedEndOfInput(in, expected)
+    }
+  })
 }
 
 /// Consumes an item that is not included in the given list.
@@ -205,13 +252,30 @@ pub fn between(
 
 /// Tries to apply the given parsers in order and returns the result of the first one that succeeds.
 pub fn choice(parsers: List(Parser(i, a))) -> Parser(i, a) {
-  fn(input: Input(i)) {
+  do_choice(parsers, [])
+}
+
+pub fn do_choice(
+  parsers: List(Parser(i, a)),
+  expected: List(String),
+) -> Parser(i, a) {
+  fn(in: Input(i)) {
     case parsers {
-      [] -> Error(ParseError(input, ["choice"]))
+      [] ->
+        case input.get(in) {
+          None -> Error(UnexpectedEndOfInput(in, expected))
+          Some(token) -> Error(UnexpectedToken(in, expected, token))
+        }
       [parser, ..rest] -> {
-        case parser(input) {
+        case parser(in) {
           Ok(parsed) -> Ok(parsed)
-          Error(_) -> choice(rest)(input)
+          Error(err) -> {
+            let new_expected = case err {
+              UnexpectedToken(_, expected, _) -> expected
+              pears.UnexpectedEndOfInput(_, expected) -> expected
+            }
+            do_choice(rest, list.concat([expected, new_expected]))(in)
+          }
         }
       }
     }
@@ -275,9 +339,12 @@ pub fn unwrap(parser: Parser(i, Option(a)), default: a) -> Parser(i, a) {
 pub fn recognize(parser: Parser(i, a)) -> Parser(i, List(i)) {
   fn(in: Input(i)) {
     use parsed <- try(parser(in))
-    let original_length = list.length(in)
-    let parsed_length = list.length(parsed.input)
-    let consumed = list.take(in, original_length - parsed_length)
+    let start = in.cursor
+    let parsed_length = parsed.input.cursor - start
+    let consumed =
+      in.tokens
+      |> list.drop(start)
+      |> list.take(parsed_length)
     ok(parsed.input, consumed)
   }
 }
