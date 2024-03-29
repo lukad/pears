@@ -1,5 +1,7 @@
 import gleam/float
 import gleam/int
+import gleam/option.{None, Some}
+import gleam/result
 import gleam/string
 import pears.{type Parser}
 import pears/chars.{type Char, digit, string}
@@ -40,34 +42,41 @@ fn value_parser() -> Parser(Char, Json) {
         digits0,
       )),
     )
+    |> map(string.concat)
 
   let frac =
     just(".")
     |> right(digits1)
+    |> map(string.concat)
 
   let exp =
     alt(just("e"), just("E"))
     |> pair(maybe(one_of(["+", "-"])))
     |> pair(digits1)
+    |> recognize()
+    |> map(string.concat)
 
   let num =
     maybe(just("-"))
     |> pair(whole)
     |> pair(maybe(frac))
     |> pair(maybe(exp))
-    |> recognize()
-    |> map(fn(chars) {
-      let str = string.concat(chars)
-      let number = float.parse(str)
-
-      case number {
-        Ok(num) -> Num(num)
-        Error(_) -> {
-          let assert Ok(number) = int.parse(str)
-          Num(int.to_float(number))
-        }
-      }
+    |> map(fn(p) {
+      let #(#(#(neg, whole), fraction), ex) = p
+      let str =
+        option.unwrap(neg, "")
+        <> whole
+        <> "."
+        <> option.unwrap(fraction, "0")
+        <> option.unwrap(ex, "")
+      str
+      |> float.parse()
+      |> result.unwrap(case neg {
+        Some(_) -> -1.7976931348623158e308
+        None -> 1.7976931348623158e308
+      })
     })
+    |> map(Num)
 
   let bool =
     alt(to(string("true"), Boolean(True)), to(string("false"), Boolean(False)))
@@ -145,6 +154,16 @@ pub fn parse_numbers_test() {
   json_parser()
   |> should_parse("4.2", Num(4.2))
   |> should_parse("42", Num(42.0))
+  |> should_parse("0", Num(0.0))
+  |> should_parse("-0", Num(-0.0))
+  |> should_parse("1e10", Num(1.0e10))
+}
+
+pub fn parse_large_floats() {
+  // floats which are too large to be represented should be parsed as the max or min representable float
+  json_parser()
+  |> should_parse("1e1000", Num(1.7976931348623158e308))
+  |> should_parse("-1e1000", Num(-1.7976931348623158e308))
 }
 
 pub fn parse_booleans_test() {
