@@ -104,7 +104,7 @@ fn value_parser() -> Parser(Char, Json) {
     )
 
   let str =
-    none_of(["\""])
+    none_of(["\"", "\\"])
     |> alt(escape)
     |> many0()
     |> map(string.concat)
@@ -161,8 +161,9 @@ pub fn parse_null_test() {
 pub fn parse_strings_test() {
   json_parser()
   |> should_parse("\"hello\"", Str("hello"))
-  // |> should_parse("\"hello\\nworld\"", Str("hello\nworld"))
-  // |> should_parse("\"\\u0048\\u0065\\u006c\\u006c\\u006f\"", Str("Hello"))
+  |> should_parse("\"hello\\nworld\"", Str("hello\nworld"))
+  |> should_parse("\"\\u0048\\u0065\\u006c\\u006c\\u006f\"", Str("Hello"))
+  |> should_parse("\"\\\"\"", Str("\""))
 }
 
 pub fn parse_arrays_test() {
