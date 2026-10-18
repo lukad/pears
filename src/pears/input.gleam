@@ -1,7 +1,6 @@
 //// This module defines the `Input(i)` type that represents a list of tokens that can be consumed by a parser.
 //// It also provides some helper functions for working with `Input(i)`.
 
-import gleam/iterator
 import gleam/list
 import gleam/option.{type Option}
 
@@ -12,8 +11,8 @@ pub type Input(i) {
 
 pub fn get(input: Input(a)) -> Option(a) {
   input.tokens
-  |> iterator.from_list()
-  |> iterator.at(input.cursor)
+  |> list.drop(input.cursor)
+  |> list.first()
   |> option.from_result()
 }
 

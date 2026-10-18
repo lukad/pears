@@ -1,10 +1,10 @@
 import gleam/list
+import helpers.{should_parse}
 import pears.{type Parser}
 import pears/chars.{type Char, char}
 import pears/combinators.{
   alt, between, eof, lazy, left, many0, many1, map, none_of, right, to,
 }
-import helpers.{should_parse}
 
 pub type Program =
   List(Instruction)

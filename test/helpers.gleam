@@ -1,6 +1,6 @@
-import pears/input
-import pears.{type Parsed, type Parser, Parsed, parse_string}
 import gleeunit/should
+import pears.{type Parsed, type Parser, parse_string}
+import pears/input
 
 pub fn should_be_at_end(parsed: Parsed(i, a)) -> Parsed(i, a) {
   parsed.input

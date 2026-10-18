@@ -1,5 +1,5 @@
-import pears/combinators.{between, just, many0, many1, one_of, pair, seq}
 import helpers.{should_not_parse, should_parse}
+import pears/combinators.{between, just, many0, many1, one_of, pair, seq}
 
 pub fn pair_test() {
   pair(just("a"), just("b"))

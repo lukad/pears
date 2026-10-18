@@ -1,16 +1,16 @@
+import gleam/dict.{type Dict}
 import gleam/float
 import gleam/int
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
+import helpers.{should_parse}
 import pears.{type Parser}
 import pears/chars.{type Char, digit, string}
 import pears/combinators.{
   alt, between, choice, eof, just, lazy, left, many0, map, maybe, none_of,
   one_of, pair, recognize, right, sep_by0, seq, to,
 }
-import gleam/dict.{type Dict}
-import helpers.{should_parse}
 
 pub type Json {
   Str(String)

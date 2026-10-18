@@ -1,9 +1,9 @@
 import gleam/int
-import gleam/string
 import gleam/list
+import gleam/string
 import pears.{type Parser, UnexpectedEndOfInput, UnexpectedToken, ok}
-import pears/input.{type Input, Input}
 import pears/combinators.{just, many0, many1, map, one_of, satisfying}
+import pears/input.{type Input, Input}
 
 /// Creates an `Input(Char)` from a string.
 pub fn input(s: String) -> Input(Char) {

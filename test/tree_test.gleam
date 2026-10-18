@@ -1,7 +1,7 @@
+import helpers.{should_parse}
 import pears.{type Parser}
 import pears/chars.{type Char, number}
 import pears/combinators.{alt, between, eof, just, lazy, left, map, sep_by0}
-import helpers.{should_parse}
 
 pub type Tree(a) {
   Leaf(a)

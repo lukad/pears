@@ -1,7 +1,7 @@
 import gleam/list
-import gleam/string
 import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
+import gleam/string
 import pears.{
   type ParseError, type ParseResult, type Parser, Parsed, UnexpectedEndOfInput,
   UnexpectedToken, ok,
@@ -274,7 +274,7 @@ pub fn do_choice(
               UnexpectedToken(_, expected, _) -> expected
               pears.UnexpectedEndOfInput(_, expected) -> expected
             }
-            do_choice(rest, list.concat([expected, new_expected]))(in)
+            do_choice(rest, list.append(expected, new_expected))(in)
           }
         }
       }
