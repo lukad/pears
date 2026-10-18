@@ -339,12 +339,7 @@ pub fn unwrap(parser: Parser(i, Option(a)), default: a) -> Parser(i, a) {
 pub fn recognize(parser: Parser(i, a)) -> Parser(i, List(i)) {
   fn(in: Input(i)) {
     use parsed <- try(parser(in))
-    let start = in.cursor
-    let parsed_length = parsed.input.cursor - start
-    let consumed =
-      in.tokens
-      |> list.drop(start)
-      |> list.take(parsed_length)
+    let consumed = list.take(in.tokens, parsed.input.cursor - in.cursor)
     ok(parsed.input, consumed)
   }
 }

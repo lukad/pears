@@ -1,5 +1,8 @@
 import helpers.{should_not_parse, should_parse}
-import pears/combinators.{between, just, many0, many1, one_of, pair, seq}
+import pears/chars
+import pears/combinators.{
+  between, just, many0, many1, one_of, pair, recognize, right, seq,
+}
 
 pub fn pair_test() {
   pair(just("a"), just("b"))
@@ -43,4 +46,20 @@ pub fn seq_test() {
   seq([just("a"), just("b"), just("c")])
   |> should_parse("abc", ["a", "b", "c"])
   |> should_not_parse("ab")
+}
+
+pub fn recognize_test() {
+  just("x")
+  |> right(recognize(pair(just("a"), just("b"))))
+  |> should_parse("xabc", ["a", "b"])
+  |> should_not_parse("xac")
+}
+
+pub fn string_test() {
+  just("x")
+  |> right(chars.string("ab"))
+  |> right(just("c"))
+  |> should_parse("xabc", "c")
+  |> should_not_parse("xab")
+  |> should_not_parse("xac")
 }

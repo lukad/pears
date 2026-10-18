@@ -58,6 +58,9 @@ See the [test](./test) directory for more examples.
 ## Development
 
 ```sh
-gleam test  # Run the tests
-gleam shell # Run an Erlang shell
+gleam test               # Run the tests
+gleam run -m pears_bench # Run the benchmarks
+gleam shell              # Run an Erlang shell
 ```
+
+Add `--target javascript` to run the tests or benchmarks on JavaScript.

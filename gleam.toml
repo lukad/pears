@@ -9,3 +9,4 @@ gleam_stdlib = "~> 0.34 or ~> 1.0"
 
 [dev-dependencies]
 gleeunit = "~> 1.0"
+gleamy_bench = ">= 0.6.0 and < 1.0.0"
