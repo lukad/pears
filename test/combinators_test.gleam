@@ -1,7 +1,11 @@
+import gleam/list
+import gleam/option.{None, Some}
+import gleam/string
 import helpers.{should_not_parse, should_parse}
 import pears/chars
 import pears/combinators.{
-  between, just, many0, many1, one_of, pair, recognize, right, seq,
+  between, just, many0, many1, maybe, one_of, pair, recognize, right, sep_by0,
+  seq,
 }
 
 pub fn pair_test() {
@@ -23,6 +27,31 @@ pub fn many_test() {
   |> should_parse("aaa", ["a", "a", "a"])
   |> should_parse("aaab", ["a", "a", "a"])
   |> should_parse("b", [])
+}
+
+pub fn many_long_input_test() {
+  let n = 100_000
+  many0(just("a"))
+  |> should_parse(string.repeat("a", n), list.repeat("a", n))
+
+  many1(just("a"))
+  |> should_parse(string.repeat("a", n), list.repeat("a", n))
+
+  sep_by0(just("a"), just(","))
+  |> should_parse(list.repeat("a", n) |> string.join(","), list.repeat("a", n))
+}
+
+pub fn many_stops_on_empty_match_test() {
+  many0(maybe(just("a")))
+  |> should_parse("aab", [Some("a"), Some("a")])
+  |> should_parse("b", [])
+
+  many0(many0(just("a")))
+  |> should_parse("aab", [["a", "a"]])
+  |> should_parse("b", [])
+
+  many1(maybe(just("a")))
+  |> should_parse("b", [None])
 }
 
 pub fn many1_test() {

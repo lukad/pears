@@ -174,15 +174,21 @@ pub fn right(
 }
 
 /// Applies the given parser zero or more times.
+///
+/// Stops as soon as the parser fails or succeeds without consuming any input.
 pub fn many0(parser: Parser(i, a)) -> Parser(i, List(a)) {
-  fn(in: Input(i)) {
-    case parser(in) {
-      Ok(parsed) -> {
-        use next <- try(many0(parser)(parsed.input))
-        ok(next.input, [parsed.value, ..next.value])
-      }
-      Error(_) -> ok(in, [])
-    }
+  fn(in: Input(i)) { do_many(parser, in, []) }
+}
+
+fn do_many(
+  parser: Parser(i, a),
+  in: Input(i),
+  acc: List(a),
+) -> ParseResult(i, List(a)) {
+  case parser(in) {
+    Ok(parsed) if parsed.input.cursor > in.cursor ->
+      do_many(parser, parsed.input, [parsed.value, ..acc])
+    _ -> ok(in, list.reverse(acc))
   }
 }
 
