@@ -4,11 +4,11 @@ import gleam/int
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
-import helpers.{should_parse}
+import helpers.{should_not_parse, should_parse}
 import pears.{type Parser}
 import pears/chars.{type Char, digit, string}
 import pears/combinators.{
-  alt, between, choice, eof, just, lazy, left, many0, map, maybe, none_of,
+  alt, between, choice, eof, just, lazy, left, many0, many1, map, maybe, none_of,
   one_of, pair, recognize, right, sep_by0, seq, to,
 }
 
@@ -32,7 +32,7 @@ fn value_parser() -> Parser(Char, Json) {
 
   let digits0 = many0(digit())
 
-  let digits1 = many0(digit())
+  let digits1 = many1(digit())
 
   let whole =
     alt(
@@ -69,12 +69,15 @@ fn value_parser() -> Parser(Char, Json) {
         <> "."
         <> option.unwrap(fraction, "0")
         <> option.unwrap(ex, "")
+      // Out of range floats fail to parse on Erlang and become Infinity on JavaScript
+      let max_float = 1.7976931348623158e308
       str
       |> float.parse()
       |> result.unwrap(case neg {
-        Some(_) -> -1.7976931348623158e308
-        None -> 1.7976931348623158e308
+        Some(_) -> float.negate(max_float)
+        None -> max_float
       })
+      |> float.clamp(min: float.negate(max_float), max: max_float)
     })
     |> map(Num)
 
@@ -157,9 +160,16 @@ pub fn parse_numbers_test() {
   |> should_parse("0", Num(0.0))
   |> should_parse("-0", Num(-0.0))
   |> should_parse("1e10", Num(1.0e10))
+  |> should_parse("-1.5E-3", Num(-0.0015))
+  |> should_not_parse("1.")
+  |> should_not_parse("1e")
+  |> should_not_parse("1e+")
+  |> should_not_parse("01")
+  |> should_not_parse("-")
+  |> should_not_parse(".5")
 }
 
-pub fn parse_large_floats() {
+pub fn parse_large_floats_test() {
   // floats which are too large to be represented should be parsed as the max or min representable float
   json_parser()
   |> should_parse("1e1000", Num(1.7976931348623158e308))
