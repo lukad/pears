@@ -177,17 +177,25 @@
 ////
 //// Please have a look at the tests for more complex examples, such as parsing JSON or Brainf*ck.
 
+import gleam/int
+import gleam/list
+import gleam/option.{type Option, None}
 import gleam/string
 import pears/input.{type Input, Input}
 
 /// Returned by a parser when it is successful. It contains the remaining input and the parsed value.
+///
+/// `furthest_error` is an error the parser recovered from, e.g. where `many0`
+/// stopped. It gets merged into later errors to make their messages more complete.
 pub type Parsed(i, a) {
-  Parsed(input: Input(i), value: a)
+  Parsed(input: Input(i), value: a, furthest_error: Option(ParseError(i)))
 }
 
+/// Returned by a parser when it fails. `position` is the index of the token
+/// where parsing failed.
 pub type ParseError(i) {
-  UnexpectedEndOfInput(input: Input(i), expected: List(String))
-  UnexpectedToken(input: Input(i), expected: List(String), found: i)
+  UnexpectedEndOfInput(position: Int, expected: List(String))
+  UnexpectedToken(position: Int, expected: List(String), found: i)
 }
 
 /// The result of a parser. It is either a `Parsed` or a `ParseError`.
@@ -212,5 +220,33 @@ pub fn parse_string(i: String, p: Parser(String, a)) -> ParseResult(String, a) {
 }
 
 pub fn ok(input: Input(i), value: a) -> ParseResult(i, a) {
-  Ok(Parsed(input, value))
+  Ok(Parsed(input, value, None))
+}
+
+/// Formats a parse error, e.g. `position 3: expected "," or "]", found "x"`.
+/// See `chars.format_error` for line and column numbers.
+pub fn format_error(error: ParseError(i)) -> String {
+  "position " <> int.to_string(error.position) <> ": " <> error_message(error)
+}
+
+/// Formats a parse error without its position, e.g. `expected "," or "]", found "x"`.
+pub fn error_message(error: ParseError(i)) -> String {
+  let found = case error {
+    UnexpectedEndOfInput(_, _) -> "end of input"
+    UnexpectedToken(_, _, found) -> string.inspect(found)
+  }
+  case error.expected {
+    [] -> "unexpected " <> found
+    expected ->
+      "expected " <> join_alternatives(expected) <> ", found " <> found
+  }
+}
+
+fn join_alternatives(alternatives: List(String)) -> String {
+  case list.reverse(alternatives) {
+    [] -> ""
+    [only] -> only
+    [last, ..rest] ->
+      { rest |> list.reverse() |> string.join(", ") } <> " or " <> last
+  }
 }

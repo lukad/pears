@@ -4,12 +4,13 @@ import gleam/int
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
+import gleeunit/should
 import helpers.{should_not_parse, should_parse}
 import pears.{type Parser}
 import pears/chars.{type Char, digit, string}
 import pears/combinators.{
-  alt, between, choice, eof, just, lazy, left, many0, many1, map, maybe, none_of,
-  one_of, pair, recognize, right, sep_by0, seq, to,
+  alt, between, choice, eof, hidden, just, lazy, left, many0, many1, map, maybe,
+  none_of, one_of, pair, recognize, right, sep_by0, seq, to,
 }
 
 pub type Json {
@@ -24,6 +25,7 @@ pub type Json {
 fn whitespace0() -> Parser(Char, List(Char)) {
   one_of([" ", "\n", "\r", "\t"])
   |> many0()
+  |> hidden()
 }
 
 fn value_parser() -> Parser(Char, Json) {
@@ -236,4 +238,17 @@ pub fn parse_objects_test() {
       ]),
     ),
   )
+}
+
+pub fn error_messages_test() {
+  let format = fn(source) {
+    let assert Error(error) = pears.parse_string(source, json_parser())
+    chars.format_error(error, source)
+  }
+
+  format("[1,\n 2 x]")
+  |> should.equal("line 2, column 4: expected \",\" or \"]\", found \"x\"")
+
+  format("nul")
+  |> should.equal("line 1, column 4: expected \"null\", found end of input")
 }

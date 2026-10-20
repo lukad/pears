@@ -16,7 +16,7 @@ gleam add pears
 ```gleam
 import pears.{type Parser, Parsed}
 import pears/chars.{type Char, number}
-import pears/combinators.{alt, between, just, lazy, map, sep_by0}
+import pears/combinators.{alt, between, eof, just, lazy, left, map, sep_by0}
 
 pub type Tree(a) {
   Leaf(a)
@@ -40,9 +40,22 @@ pub fn main() {
     |> chars.input()
     |> tree_parser(number())
 
-  let assert Ok(Parsed([], Node([Leaf(1), Node([Leaf(2), Leaf(3)]), Leaf(4)]))) =
-    parse_result
+  let assert Ok(Parsed(
+    value: Node([Leaf(1), Node([Leaf(2), Leaf(3)]), Leaf(4)]),
+    ..,
+  )) = parse_result
 }
+```
+
+`chars.format_error` turns a `ParseError` into a message:
+
+```gleam
+let source = "[1,[2,3],4]x"
+let assert Error(error) =
+  pears.parse_string(source, left(tree_parser(number()), eof()))
+
+chars.format_error(error, source)
+// => line 1, column 12: expected end of input, found "x"
 ```
 
 Further documentation can be found at [https://hexdocs.pm/pears](https://hexdocs.pm/pears/pears.html).

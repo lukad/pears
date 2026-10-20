@@ -1,5 +1,5 @@
 import gleeunit/should
-import pears.{type Parsed, type Parser, parse_string}
+import pears.{type ParseError, type Parsed, type Parser, parse_string}
 import pears/input
 
 pub fn should_be_at_end(parsed: Parsed(i, a)) -> Parsed(i, a) {
@@ -34,5 +34,16 @@ pub fn should_not_parse(
   input
   |> parse_string(parser)
   |> should.be_error()
+  parser
+}
+
+pub fn should_fail_with(
+  parser: Parser(String, a),
+  input: String,
+  error: ParseError(String),
+) -> Parser(String, a) {
+  input
+  |> parse_string(parser)
+  |> should.equal(Error(error))
   parser
 }
