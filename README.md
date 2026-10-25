@@ -14,9 +14,9 @@ gleam add pears
 ## Usage
 
 ```gleam
-import pears.{type Parser, Parsed}
+import pears.{type Parser}
 import pears/chars.{type Char, number}
-import pears/combinators.{alt, between, eof, just, lazy, left, map, sep_by0}
+import pears/combinators.{alt, between, just, lazy, map, sep_by0}
 
 pub type Tree(a) {
   Leaf(a)
@@ -35,15 +35,8 @@ fn tree_parser(p: Parser(Char, a)) -> Parser(Char, Tree(a)) {
 }
 
 pub fn main() {
-  let parse_result =
-    "[1,[2,3],4]"
-    |> chars.input()
-    |> tree_parser(number())
-
-  let assert Ok(Parsed(
-    value: Node([Leaf(1), Node([Leaf(2), Leaf(3)]), Leaf(4)]),
-    ..,
-  )) = parse_result
+  let assert Ok(Node([Leaf(1), Node([Leaf(2), Leaf(3)]), Leaf(4)])) =
+    pears.parse_string_all("[1,[2,3],4]", tree_parser(number()))
 }
 ```
 
@@ -51,8 +44,7 @@ pub fn main() {
 
 ```gleam
 let source = "[1,[2,3],4]x"
-let assert Error(error) =
-  pears.parse_string(source, left(tree_parser(number()), eof()))
+let assert Error(error) = pears.parse_string_all(source, tree_parser(number()))
 
 chars.format_error(error, source)
 // => line 1, column 12: expected end of input, found "x"

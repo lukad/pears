@@ -179,9 +179,10 @@
 
 import gleam/int
 import gleam/list
-import gleam/option.{type Option, None}
+import gleam/option.{type Option, None, Some}
+import gleam/order
 import gleam/string
-import pears/input.{type Input, Input}
+import pears/input.{type Input}
 
 /// Returned by a parser when it is successful. It contains the remaining input and the parsed value.
 ///
@@ -206,21 +207,77 @@ pub type ParseResult(i, a) =
 pub type Parser(i, a) =
   fn(Input(i)) -> ParseResult(i, a)
 
-/// Helper function that takes a parser and an input and runs the parser on the input.
+/// Runs a parser on a list of tokens. The parser doesn't have to consume all of them.
 pub fn parse(i: List(i), p: Parser(i, a)) -> ParseResult(i, a) {
-  Input(tokens: i, cursor: 0)
+  input.new(i)
   |> p()
 }
 
-/// Helper function that takes a string and a parser and runs the parser on the string.
+/// Runs a parser on the graphemes of a string. The parser doesn't have to consume all of them.
 pub fn parse_string(i: String, p: Parser(String, a)) -> ParseResult(String, a) {
   i
   |> string.to_graphemes()
   |> parse(p)
 }
 
+/// Runs a parser on a list of tokens and returns the parsed value.
+/// Fails if any tokens are left over.
+pub fn parse_all(i: List(i), p: Parser(i, a)) -> Result(a, ParseError(i)) {
+  case parse(i, p) {
+    Error(error) -> Error(error)
+    Ok(Parsed(rest, value, furthest_error)) ->
+      case input.tokens(rest), furthest_error {
+        [], _ -> Ok(value)
+        [token, ..], _ -> {
+          let error =
+            UnexpectedToken(input.position(rest), ["end of input"], token)
+          case furthest_error {
+            None -> Error(error)
+            Some(furthest_error) -> Error(merge_errors(furthest_error, error))
+          }
+        }
+      }
+  }
+}
+
+/// Runs a parser on the graphemes of a string and returns the parsed value.
+/// Fails if any graphemes are left over.
+pub fn parse_string_all(
+  i: String,
+  p: Parser(String, a),
+) -> Result(a, ParseError(String)) {
+  i
+  |> string.to_graphemes()
+  |> parse_all(p)
+}
+
+/// Creates a successful parse result.
 pub fn ok(input: Input(i), value: a) -> ParseResult(i, a) {
   Ok(Parsed(input, value, None))
+}
+
+/// Keeps the error that got furthest, combining expectations at the same position.
+@internal
+pub fn merge_errors(a: ParseError(i), b: ParseError(i)) -> ParseError(i) {
+  case int.compare(a.position, b.position) {
+    order.Gt -> a
+    order.Lt -> b
+    order.Eq ->
+      with_expected(b, list.unique(list.append(a.expected, b.expected)))
+  }
+}
+
+@internal
+pub fn with_expected(
+  error: ParseError(i),
+  expected: List(String),
+) -> ParseError(i) {
+  case error {
+    UnexpectedEndOfInput(position, _) ->
+      UnexpectedEndOfInput(position, expected)
+    UnexpectedToken(position, _, found) ->
+      UnexpectedToken(position, expected, found)
+  }
 }
 
 /// Formats a parse error, e.g. `position 3: expected "," or "]", found "x"`.

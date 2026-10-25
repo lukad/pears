@@ -6,13 +6,7 @@ import pears.{
   UnexpectedToken, ok,
 }
 import pears/combinators.{hidden, just, labelled, many0, many1, map, satisfying}
-import pears/input.{type Input, Input}
-
-/// Creates an `Input(Char)` from a string.
-pub fn input(s: String) -> Input(Char) {
-  let tokens = string.to_graphemes(s)
-  Input(tokens, 0)
-}
+import pears/input.{type Input}
 
 /// A grapheme is a user-perceived character.
 pub type Char =
@@ -50,13 +44,14 @@ fn do_string(
   chars: List(Char),
   str: String,
 ) -> ParseResult(Char, String) {
-  case chars, in.tokens {
+  case chars, input.tokens(in) {
     [], _ -> ok(in, str)
-    [char, ..rest], [token, ..tokens] if char == token ->
-      do_string(Input(tokens, in.cursor + 1), rest, str)
+    [char, ..rest], [token, ..] if char == token ->
+      do_string(input.next(in), rest, str)
     _, [token, ..] ->
-      Error(UnexpectedToken(in.cursor, [string.inspect(str)], token))
-    _, [] -> Error(UnexpectedEndOfInput(in.cursor, [string.inspect(str)]))
+      Error(UnexpectedToken(input.position(in), [string.inspect(str)], token))
+    _, [] ->
+      Error(UnexpectedEndOfInput(input.position(in), [string.inspect(str)]))
   }
 }
 
@@ -75,10 +70,8 @@ pub fn digit() -> Parser(Char, Char) {
 pub fn number() -> Parser(Char, Int) {
   many1(digit())
   |> map(fn(digits) {
-    list.fold(digits, 0, fn(acc, digit) {
-      let assert Ok(digit) = int.parse(digit)
-      acc * 10 + digit
-    })
+    let assert Ok(number) = int.parse(string.concat(digits))
+    number
   })
 }
 
