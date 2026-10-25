@@ -2,11 +2,12 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
 import helpers.{should_not_parse, should_parse}
+import pears.{Span}
 import pears/chars
 import pears/combinators.{
   any, at_least, at_most, between, exactly, just, left, many0, many1, many_till,
   maybe, not_followed_by, one_of, pair, peek, recognize, right, sep_by0,
-  sep_end_by0, sep_end_by1, seq, succeed, then,
+  sep_end_by0, sep_end_by1, seq, succeed, then, with_span,
 }
 
 pub fn pair_test() {
@@ -173,4 +174,13 @@ pub fn sep_end_by_test() {
   sep_end_by1(just("a"), just(","))
   |> should_parse("a,", ["a"])
   |> should_not_parse(",")
+}
+
+pub fn with_span_test() {
+  with_span(many0(just("a")))
+  |> should_parse("aab", #(["a", "a"], Span(0, 2)))
+  |> should_parse("b", #([], Span(0, 0)))
+
+  right(just("x"), with_span(chars.string("ab")))
+  |> should_parse("xab", #("ab", Span(1, 3)))
 }

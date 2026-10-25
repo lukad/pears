@@ -3,7 +3,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import pears.{
-  type ParseError, type ParseResult, type Parsed, type Parser, Parsed,
+  type ParseError, type ParseResult, type Parsed, type Parser, Parsed, Span,
   UnexpectedEndOfInput, UnexpectedToken, merge_errors, ok, with_expected,
 }
 import pears/input.{type Input}
@@ -755,6 +755,24 @@ pub fn unwrap(parser: Parser(i, Option(a)), default: a) -> Parser(i, a) {
       Some(value) -> value
     }
   })
+}
+
+/// Returns the parsed value together with the span of tokens the parser consumed.
+///
+/// ```gleam
+/// import pears.{Span}
+/// import pears/chars
+///
+/// let parser = right(chars.string("let "), with_span(chars.string("x")))
+/// assert pears.parse_string_all("let x", parser) == Ok(#("x", Span(4, 5)))
+/// ```
+pub fn with_span(parser: Parser(i, a)) -> Parser(i, #(a, pears.Span)) {
+  fn(in: Input(i)) {
+    let start = input.position(in)
+    use parsed <- result.map(parser(in))
+    let span = Span(start, input.position(parsed.input))
+    Parsed(parsed.input, #(parsed.value, span), parsed.furthest_error)
+  }
 }
 
 /// Creates a parser that returns the consumed tokens instead of its parsed value.

@@ -160,6 +160,11 @@ pub type Parsed(i, a) {
   Parsed(input: Input(i), value: a, furthest_error: Option(ParseError(i)))
 }
 
+/// The tokens from `start` up to, but not including, `end`.
+pub type Span {
+  Span(start: Int, end: Int)
+}
+
 /// Returned by a parser when it fails. `position` is the index of the token
 /// where parsing failed.
 pub type ParseError(i) {
