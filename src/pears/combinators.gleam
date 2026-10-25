@@ -432,6 +432,61 @@ fn do_choice(
   }
 }
 
+/// Parses one or more occurrences of the given parser separated by `operator`,
+/// combining the values from left to right with the functions `operator` returns.
+/// Use it for left-associative operators like `-`:
+///
+/// ```gleam
+/// import gleam/int
+/// import pears
+/// import pears/chars
+///
+/// let minus = to(just("-"), int.subtract)
+/// assert pears.parse_string_all("10-2-3", chainl1(chars.number(), minus)) == Ok(5)
+/// ```
+pub fn chainl1(
+  parser: Parser(i, a),
+  operator: Parser(i, fn(a, a) -> a),
+) -> Parser(i, a) {
+  use first <- then(parser)
+  use rest <- map(many0(pair(operator, parser)))
+  list.fold(rest, first, fn(acc, item) {
+    let #(op, value) = item
+    op(acc, value)
+  })
+}
+
+/// Like `chainl1`, but combines the values from right to left, so `10-2-3`
+/// becomes `10-(2-3)`:
+///
+/// ```gleam
+/// import gleam/int
+/// import pears
+/// import pears/chars
+///
+/// let minus = to(just("-"), int.subtract)
+/// assert pears.parse_string_all("10-2-3", chainr1(chars.number(), minus)) == Ok(11)
+/// ```
+pub fn chainr1(
+  parser: Parser(i, a),
+  operator: Parser(i, fn(a, a) -> a),
+) -> Parser(i, a) {
+  use first <- then(parser)
+  use rest <- map(many0(pair(operator, parser)))
+  case list.reverse(rest) {
+    [] -> first
+    [#(op, last), ..rest] -> {
+      let #(op, acc) =
+        list.fold(rest, #(op, last), fn(state, item) {
+          let #(pending, acc) = state
+          let #(op, value) = item
+          #(op, pending(value, acc))
+        })
+      op(first, acc)
+    }
+  }
+}
+
 /// Parses zero or more occurrences of the given parser separated by the given separator.
 pub fn sep_by0(
   parser: Parser(i, a),
