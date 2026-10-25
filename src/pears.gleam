@@ -8,7 +8,7 @@
 //// ```gleam
 //// import pears.{UnexpectedToken}
 //// import pears/chars
-//// import pears/combinators.{alt, between, choice, just, left, many0, many1, map, pair, right, sep_by0, to}
+//// import pears/combinators.{alt, between, choice, just, left, many0, many1, map, pair, right, sep_by0, succeed, then, to}
 ////
 //// let a_parser = just("a")
 //// let assert Ok(parsed) = parse_string("abc", a_parser)
@@ -78,6 +78,19 @@
 //// ```gleam
 //// assert parse_string_all("ab", left(just("a"), just("b"))) == Ok("a")
 //// assert parse_string_all("ab", right(just("a"), just("b"))) == Ok("b")
+//// ```
+////
+//// Longer sequences are easier to write with `then` and Gleam's `use` syntax.
+//// `succeed` returns a value without consuming any input:
+////
+//// ```gleam
+//// let point = {
+////   use x <- then(chars.number())
+////   use _ <- then(just(","))
+////   use y <- then(chars.number())
+////   succeed(#(x, y))
+//// }
+//// assert parse_string_all("1,2", point) == Ok(#(1, 2))
 //// ```
 ////
 //// These building blocks are enough to build many combinators that can parse complex data structures.

@@ -4,8 +4,8 @@ import helpers.{should_fail_with}
 import pears.{UnexpectedEndOfInput, UnexpectedToken}
 import pears/chars
 import pears/combinators.{
-  alt, between, choice, eof, hidden, just, labelled, left, many0, maybe, none_of,
-  pair, right, sep_by0, seq,
+  alt, between, choice, eof, fail, hidden, just, labelled, left, many0, maybe,
+  none_of, pair, right, sep_by0, seq, succeed, then,
 }
 
 pub fn just_test() {
@@ -157,4 +157,20 @@ pub fn successful_parse_keeps_recovered_error_test() {
   let assert Ok(parsed) = pears.parse_string("aab", many0(just("a")))
   parsed.furthest_error
   |> should.equal(Some(UnexpectedToken(2, ["\"a\""], "b")))
+}
+
+pub fn then_test() {
+  then(just("a"), fn(_) { succeed(1) })
+  |> should_fail_with("b", UnexpectedToken(0, ["\"a\""], "b"))
+
+  then(many0(just("a")), fn(_) { just("b") })
+  |> should_fail_with("aac", UnexpectedToken(2, ["\"a\"", "\"b\""], "c"))
+}
+
+pub fn fail_test() {
+  fail("digit")
+  |> should_fail_with("", UnexpectedEndOfInput(0, ["digit"]))
+
+  then(maybe(just("-")), fn(_) { fail("digit") })
+  |> should_fail_with("x", UnexpectedToken(0, ["\"-\"", "digit"], "x"))
 }

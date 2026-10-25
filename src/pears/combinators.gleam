@@ -73,6 +73,53 @@ fn continue(
   }
 }
 
+/// Returns `value` without consuming any input.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("", succeed(1)) == Ok(1)
+/// ```
+pub fn succeed(value: a) -> Parser(i, a) {
+  fn(in: Input(i)) { ok(in, value) }
+}
+
+/// Fails at the current position, reporting `expected` as what was expected.
+///
+/// ```gleam
+/// import pears.{UnexpectedToken}
+///
+/// assert pears.parse_string("a", fail("digit")) == Error(UnexpectedToken(0, ["digit"], "a"))
+/// ```
+pub fn fail(expected: String) -> Parser(i, a) {
+  fn(in: Input(i)) { Error(error_at(in, [expected])) }
+}
+
+/// Runs the parser and passes its result to `next`, which returns the parser to
+/// run on the rest of the input. Works well with `use`:
+///
+/// ```gleam
+/// import pears
+/// import pears/chars
+///
+/// let integer = {
+///   use sign <- then(maybe(just("-")))
+///   use number <- then(chars.number())
+///   case sign {
+///     Some(_) -> succeed(-number)
+///     None -> succeed(number)
+///   }
+/// }
+///
+/// assert pears.parse_string_all("-42", integer) == Ok(-42)
+/// ```
+pub fn then(parser: Parser(i, a), next: fn(a) -> Parser(i, b)) -> Parser(i, b) {
+  fn(in: Input(i)) {
+    use parsed <- continue(parser(in))
+    next(parsed.value)(parsed.input)
+  }
+}
+
 /// Maps the result of a parser to a new value using a mapper function.
 pub fn map(p: Parser(i, a), fun: fn(a) -> b) -> Parser(i, b) {
   fn(input: Input(i)) {

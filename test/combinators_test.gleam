@@ -4,8 +4,8 @@ import gleam/string
 import helpers.{should_not_parse, should_parse}
 import pears/chars
 import pears/combinators.{
-  between, just, many0, many1, maybe, one_of, pair, recognize, right, sep_by0,
-  seq,
+  between, just, left, many0, many1, maybe, one_of, pair, recognize, right,
+  sep_by0, seq, succeed, then,
 }
 
 pub fn pair_test() {
@@ -91,4 +91,22 @@ pub fn string_test() {
   |> should_parse("xabc", "c")
   |> should_not_parse("xab")
   |> should_not_parse("xac")
+}
+
+pub fn succeed_test() {
+  left(succeed(1), just("a"))
+  |> should_parse("a", 1)
+}
+
+pub fn then_test() {
+  let digits_then_letter = {
+    use digits <- then(many1(chars.digit()))
+    use letter <- then(one_of(["a", "b"]))
+    succeed(#(digits, letter))
+  }
+
+  digits_then_letter
+  |> should_parse("12b", #(["1", "2"], "b"))
+  |> should_not_parse("12c")
+  |> should_not_parse("b")
 }
