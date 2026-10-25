@@ -4,9 +4,9 @@ import helpers.{should_fail_with}
 import pears.{UnexpectedEndOfInput, UnexpectedToken}
 import pears/chars
 import pears/combinators.{
-  alt, between, choice, eof, fail, hidden, just, labelled, left, many0, maybe,
-  none_of, not_followed_by, pair, peek, right, satisfying, sep_by0, seq, succeed,
-  then,
+  alt, between, choice, eof, exactly, fail, hidden, just, labelled, left, many0,
+  many_till, maybe, none_of, not_followed_by, pair, peek, right, satisfying,
+  sep_by0, seq, succeed, then,
 }
 
 pub fn just_test() {
@@ -188,4 +188,18 @@ pub fn not_followed_by_test() {
   let letter = satisfying(fn(c) { c == "x" || c == "y" })
   left(chars.string("let"), not_followed_by(letter))
   |> should_fail_with("letx", UnexpectedToken(3, [], "x"))
+}
+
+pub fn exactly_test() {
+  exactly(just("a"), 3)
+  |> should_fail_with("aab", UnexpectedToken(2, ["\"a\""], "b"))
+}
+
+pub fn many_till_test() {
+  many_till(just("a"), just(";"))
+  |> should_fail_with("aab", UnexpectedToken(2, ["\";\"", "\"a\""], "b"))
+
+  // a parser that consumes nothing can never reach the end
+  many_till(succeed(1), just(";"))
+  |> should_fail_with("x", UnexpectedToken(0, ["\";\""], "x"))
 }

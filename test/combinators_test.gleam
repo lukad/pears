@@ -4,8 +4,9 @@ import gleam/string
 import helpers.{should_not_parse, should_parse}
 import pears/chars
 import pears/combinators.{
-  between, just, left, many0, many1, maybe, not_followed_by, one_of, pair, peek,
-  recognize, right, sep_by0, seq, succeed, then,
+  any, at_least, at_most, between, exactly, just, left, many0, many1, many_till,
+  maybe, not_followed_by, one_of, pair, peek, recognize, right, sep_by0,
+  sep_end_by0, sep_end_by1, seq, succeed, then,
 }
 
 pub fn pair_test() {
@@ -121,4 +122,55 @@ pub fn not_followed_by_test() {
   |> should_parse("let", "let")
   |> should_parse("let z", "let")
   |> should_not_parse("letx")
+}
+
+pub fn exactly_test() {
+  exactly(just("a"), 2)
+  |> should_parse("aaa", ["a", "a"])
+  |> should_not_parse("a")
+
+  exactly(maybe(just("a")), 3)
+  |> should_parse("a", [Some("a"), None, None])
+}
+
+pub fn at_least_test() {
+  at_least(just("a"), 2)
+  |> should_parse("aa", ["a", "a"])
+  |> should_parse("aaaa", ["a", "a", "a", "a"])
+  |> should_not_parse("a")
+
+  at_least(maybe(just("a")), 0)
+  |> should_parse("", [])
+}
+
+pub fn at_most_test() {
+  at_most(just("a"), 2)
+  |> should_parse("", [])
+  |> should_parse("aaa", ["a", "a"])
+
+  at_most(maybe(just("a")), 3)
+  |> should_parse("", [])
+}
+
+pub fn many_till_test() {
+  many_till(any(), just(";"))
+  |> should_parse(";", [])
+  |> should_parse("ab;c", ["a", "b"])
+  |> should_not_parse("ab")
+
+  let n = 100_000
+  many_till(just("a"), just(";"))
+  |> should_parse(string.repeat("a", n) <> ";", list.repeat("a", n))
+}
+
+pub fn sep_end_by_test() {
+  sep_end_by0(just("a"), just(","))
+  |> should_parse("", [])
+  |> should_parse(",", [])
+  |> should_parse("a,a", ["a", "a"])
+  |> should_parse("a,a,", ["a", "a"])
+
+  sep_end_by1(just("a"), just(","))
+  |> should_parse("a,", ["a"])
+  |> should_not_parse(",")
 }

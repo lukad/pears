@@ -57,6 +57,16 @@ fn recover(parsed: Parsed(i, a), error: Option(ParseError(i))) -> Parsed(i, a) {
   }
 }
 
+fn add_recovered(
+  error: ParseError(i),
+  recovered: Option(ParseError(i)),
+) -> ParseError(i) {
+  case recovered {
+    None -> error
+    Some(recovered) -> merge_errors(recovered, error)
+  }
+}
+
 /// Like `result.try`, but carries over the recovered error of `result`.
 fn continue(
   result: ParseResult(i, a),
@@ -386,6 +396,145 @@ pub fn many1(parser: Parser(i, a)) -> Parser(i, List(a)) {
   }
 }
 
+/// Applies the given parser exactly `n` times.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("aaa", exactly(just("a"), 3)) == Ok(["a", "a", "a"])
+/// let assert Error(_) = pears.parse_string_all("aa", exactly(just("a"), 3))
+/// ```
+pub fn exactly(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
+  fn(in: Input(i)) { do_repeat(parser, in, [], 0, n, Some(n), None) }
+}
+
+/// Applies the given parser `n` or more times.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("aaa", at_least(just("a"), 2)) == Ok(["a", "a", "a"])
+/// let assert Error(_) = pears.parse_string_all("a", at_least(just("a"), 2))
+/// ```
+pub fn at_least(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
+  fn(in: Input(i)) { do_repeat(parser, in, [], 0, n, None, None) }
+}
+
+/// Applies the given parser up to `n` times.
+///
+/// ```gleam
+/// import pears
+///
+/// let assert Ok(parsed) = pears.parse_string("aaa", at_most(just("a"), 2))
+/// assert parsed.value == ["a", "a"]
+/// ```
+pub fn at_most(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
+  fn(in: Input(i)) { do_repeat(parser, in, [], 0, 0, Some(n), None) }
+}
+
+/// Applies the parser at least `min` and at most `max` times. Like `many0`, it
+/// stops at a match that consumes nothing once `min` is reached.
+fn do_repeat(
+  parser: Parser(i, a),
+  in: Input(i),
+  acc: List(a),
+  count: Int,
+  min: Int,
+  max: Option(Int),
+  recovered: Option(ParseError(i)),
+) -> ParseResult(i, List(a)) {
+  case max {
+    Some(max) if count >= max -> Ok(Parsed(in, list.reverse(acc), recovered))
+    _ ->
+      case parser(in) {
+        Ok(parsed) -> {
+          let recovered =
+            merge_optional_errors(recovered, parsed.furthest_error)
+          let position = input.position(parsed.input)
+          case position > input.position(in), count >= min {
+            False, True -> Ok(Parsed(in, list.reverse(acc), recovered))
+            _, _ ->
+              do_repeat(
+                parser,
+                parsed.input,
+                [parsed.value, ..acc],
+                count + 1,
+                min,
+                max,
+                relevant(recovered, position),
+              )
+          }
+        }
+        Error(error) ->
+          case count >= min {
+            True ->
+              Ok(Parsed(
+                in,
+                list.reverse(acc),
+                merge_optional_errors(recovered, Some(error)),
+              ))
+            False -> Error(add_recovered(error, recovered))
+          }
+      }
+  }
+}
+
+/// Applies the given parser until `end` succeeds, returning the results of the
+/// parser. `end` is consumed but its result is dropped.
+///
+/// ```gleam
+/// import pears
+/// import pears/chars
+///
+/// let comment = right(chars.string("/*"), many_till(any(), chars.string("*/")))
+/// assert pears.parse_string_all("/*hi*/", comment) == Ok(["h", "i"])
+/// ```
+pub fn many_till(
+  parser: Parser(i, a),
+  end: Parser(i, b),
+) -> Parser(i, List(a)) {
+  fn(in: Input(i)) { do_many_till(parser, end, in, [], None) }
+}
+
+fn do_many_till(
+  parser: Parser(i, a),
+  end: Parser(i, b),
+  in: Input(i),
+  acc: List(a),
+  recovered: Option(ParseError(i)),
+) -> ParseResult(i, List(a)) {
+  case end(in) {
+    Ok(parsed_end) ->
+      Ok(recover(
+        Parsed(parsed_end.input, list.reverse(acc), parsed_end.furthest_error),
+        recovered,
+      ))
+    Error(end_error) -> {
+      let recovered = merge_optional_errors(recovered, Some(end_error))
+      case parser(in) {
+        Ok(parsed) -> {
+          let position = input.position(parsed.input)
+          case position > input.position(in) {
+            True -> {
+              let recovered =
+                merge_optional_errors(recovered, parsed.furthest_error)
+              do_many_till(
+                parser,
+                end,
+                parsed.input,
+                [parsed.value, ..acc],
+                relevant(recovered, position),
+              )
+            }
+            False -> Error(add_recovered(end_error, recovered))
+          }
+        }
+        Error(error) -> Error(add_recovered(error, recovered))
+      }
+    }
+  }
+}
+
 /// Lazily applies the given parser allowing for recursive parsers.
 ///
 /// ## Examples
@@ -553,6 +702,36 @@ pub fn sep_by1(
     )(parsed.input))
     ok(rest.input, [parsed.value, ..rest.value])
   }
+}
+
+/// Like `sep_by0`, but allows a trailing separator.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("a,a,", sep_end_by0(just("a"), just(","))) == Ok(["a", "a"])
+/// assert pears.parse_string_all("", sep_end_by0(just("a"), just(","))) == Ok([])
+/// ```
+pub fn sep_end_by0(
+  parser: Parser(i, a),
+  separator: Parser(i, b),
+) -> Parser(i, List(a)) {
+  alt(sep_end_by1(parser, separator), succeed([]))
+}
+
+/// Like `sep_by1`, but allows a trailing separator.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("a,a,", sep_end_by1(just("a"), just(","))) == Ok(["a", "a"])
+/// let assert Error(_) = pears.parse_string_all(",", sep_end_by1(just("a"), just(",")))
+/// ```
+pub fn sep_end_by1(
+  parser: Parser(i, a),
+  separator: Parser(i, b),
+) -> Parser(i, List(a)) {
+  left(sep_by1(parser, separator), maybe(separator))
 }
 
 /// Applies the given parser and wraps the result in an `Option`,
