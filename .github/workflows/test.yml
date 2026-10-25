@@ -8,16 +8,36 @@ on:
   pull_request:
 
 jobs:
-  test:
+  format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          gleam-version: "1.17.0"
+      - run: gleam format --check src test dev
+
+  test:
+    name: test (${{ matrix.target }}, ${{ matrix.deps }} deps)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [erlang, javascript]
+        deps: [locked, latest]
+    steps:
+      - uses: actions/checkout@v7
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
           gleam-version: "1.17.0"
           rebar3-version: "3"
-          # elixir-version: "1.15.4"
+      - uses: actions/setup-node@v7
+        if: matrix.target == 'javascript'
+        with:
+          node-version: "24"
+      - run: gleam update
+        if: matrix.deps == 'latest'
       - run: gleam deps download
-      - run: gleam test
-      - run: gleam format --check src test dev
+      - run: gleam test --target ${{ matrix.target }}
