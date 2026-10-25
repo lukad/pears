@@ -56,14 +56,13 @@ See the [test](./test) directory for more examples.
 
 ## What's missing?
 
-- Proper error handling
 - Test helpers
 - ...
 
 ## Development
 
 ```sh
-gleam test               # Run the tests
+gleam test               # Run the tests, including doc examples (via gleedoc)
 gleam run -m pears_bench # Run the benchmarks
 gleam shell              # Run an Erlang shell
 ```

@@ -204,7 +204,7 @@ pub fn just(item: i) -> Parser(i, i) {
   }
 }
 
-// Applies both parsers and returns a tuple of the results
+/// Applies both parsers and returns a tuple of the results.
 pub fn pair(
   parser_1 p1: Parser(i, a),
   parser_2 p2: Parser(i, b),
@@ -309,7 +309,7 @@ pub fn many1(parser: Parser(i, a)) -> Parser(i, List(a)) {
 ///
 /// Parsing a recursive list of chars:
 ///
-/// ```gleam
+/// ```gleam,ignore
 /// pub type Tree(a) {
 ///   Leaf(a)
 ///   Node(List(Tree(a)))
@@ -343,7 +343,7 @@ pub fn none_of(items: List(i)) -> Parser(i, i) {
   satisfying(fn(c) { !list.contains(items, c) })
 }
 
-/// Applies the given parser between the open and close parsers, returning the result of the innner parser.
+/// Applies the given parser between the open and close parsers, returning the result of the inner parser.
 pub fn between(
   parser: Parser(i, a),
   open: Parser(i, b),
@@ -440,7 +440,7 @@ pub fn unwrap(parser: Parser(i, Option(a)), default: a) -> Parser(i, a) {
   })
 }
 
-/// Creates a parser that returns the consumed tokens instead of it's parsed value.
+/// Creates a parser that returns the consumed tokens instead of its parsed value.
 pub fn recognize(parser: Parser(i, a)) -> Parser(i, List(i)) {
   fn(in: Input(i)) {
     use parsed <- result.try(parser(in))

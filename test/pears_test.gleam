@@ -1,5 +1,6 @@
+import gleedoc
 import gleeunit
 
 pub fn main() {
-  gleeunit.main()
+  gleedoc.default() |> gleedoc.run_with(gleeunit.main)
 }

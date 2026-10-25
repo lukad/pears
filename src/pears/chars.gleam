@@ -12,7 +12,7 @@ import pears/input.{type Input}
 pub type Char =
   String
 
-/// Parses a character if is whitespace according to the Unicode standard.
+/// Parses a character if it is whitespace according to the Unicode standard.
 pub fn whitespace() -> Parser(Char, Char) {
   satisfying(fn(c) { string.trim(c) == "" })
   |> labelled("whitespace")
