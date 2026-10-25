@@ -4,8 +4,8 @@ import gleam/string
 import helpers.{should_not_parse, should_parse}
 import pears/chars
 import pears/combinators.{
-  between, just, left, many0, many1, maybe, one_of, pair, recognize, right,
-  sep_by0, seq, succeed, then,
+  between, just, left, many0, many1, maybe, not_followed_by, one_of, pair, peek,
+  recognize, right, sep_by0, seq, succeed, then,
 }
 
 pub fn pair_test() {
@@ -109,4 +109,16 @@ pub fn then_test() {
   |> should_parse("12b", #(["1", "2"], "b"))
   |> should_not_parse("12c")
   |> should_not_parse("b")
+}
+
+pub fn peek_test() {
+  pair(peek(just("a")), many0(just("a")))
+  |> should_parse("aa", #("a", ["a", "a"]))
+}
+
+pub fn not_followed_by_test() {
+  left(chars.string("let"), not_followed_by(one_of(["x", "y"])))
+  |> should_parse("let", "let")
+  |> should_parse("let z", "let")
+  |> should_not_parse("letx")
 }

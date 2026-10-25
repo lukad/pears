@@ -5,7 +5,8 @@ import pears.{UnexpectedEndOfInput, UnexpectedToken}
 import pears/chars
 import pears/combinators.{
   alt, between, choice, eof, fail, hidden, just, labelled, left, many0, maybe,
-  none_of, pair, right, sep_by0, seq, succeed, then,
+  none_of, not_followed_by, pair, peek, right, satisfying, sep_by0, seq, succeed,
+  then,
 }
 
 pub fn just_test() {
@@ -173,4 +174,18 @@ pub fn fail_test() {
 
   then(maybe(just("-")), fn(_) { fail("digit") })
   |> should_fail_with("x", UnexpectedToken(0, ["\"-\"", "digit"], "x"))
+}
+
+pub fn peek_test() {
+  peek(just("a"))
+  |> should_fail_with("b", UnexpectedToken(0, ["\"a\""], "b"))
+
+  left(peek(many0(just("a"))), just("b"))
+  |> should_fail_with("aac", UnexpectedToken(0, ["\"b\""], "a"))
+}
+
+pub fn not_followed_by_test() {
+  let letter = satisfying(fn(c) { c == "x" || c == "y" })
+  left(chars.string("let"), not_followed_by(letter))
+  |> should_fail_with("letx", UnexpectedToken(3, [], "x"))
 }

@@ -163,6 +163,42 @@ pub fn labelled(parser: Parser(i, a), label: String) -> Parser(i, a) {
   }
 }
 
+/// Runs the parser without consuming any input.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("a", pair(peek(just("a")), just("a"))) == Ok(#("a", "a"))
+/// ```
+pub fn peek(parser: Parser(i, a)) -> Parser(i, a) {
+  fn(in: Input(i)) {
+    case parser(in) {
+      Ok(parsed) -> ok(in, parsed.value)
+      Error(_) as error -> error
+    }
+  }
+}
+
+/// Succeeds without consuming any input if the parser fails, and fails if it succeeds.
+///
+/// ```gleam
+/// import pears
+/// import pears/chars
+///
+/// let letter = satisfying(fn(c) { string.contains("abcdefghijklmnopqrstuvwxyz", c) })
+/// let keyword = left(chars.string("let"), not_followed_by(letter))
+/// let assert Ok(_) = pears.parse_string("let x", keyword)
+/// let assert Error(_) = pears.parse_string("letter", keyword)
+/// ```
+pub fn not_followed_by(parser: Parser(i, a)) -> Parser(i, Nil) {
+  fn(in: Input(i)) {
+    case parser(in) {
+      Ok(_) -> Error(error_at(in, []))
+      Error(_) -> ok(in, Nil)
+    }
+  }
+}
+
 /// Leaves the parser out of error messages, e.g. for optional whitespace.
 pub fn hidden(parser: Parser(i, a)) -> Parser(i, a) {
   fn(in: Input(i)) {
