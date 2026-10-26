@@ -114,8 +114,8 @@ pub fn fail(message: String) -> Parser(i, a) {
 /// import pears/chars
 ///
 /// let integer = {
-///   use sign <- then(maybe(just("-")))
-///   use number <- then(chars.number())
+///   use sign <- then(optional(token("-")))
+///   use number <- then(chars.natural())
 ///   case sign {
 ///     Some(_) -> succeed(-number)
 ///     None -> succeed(number)
@@ -140,7 +140,7 @@ pub fn then(parser: Parser(i, a), next: fn(a) -> Parser(i, b)) -> Parser(i, b) {
 /// import pears/chars
 ///
 /// let byte =
-///   try_map(chars.number(), fn(n) {
+///   try_map(chars.natural(), fn(n) {
 ///     case n < 256 {
 ///       True -> Ok(n)
 ///       False -> Error("number must be below 256")
@@ -163,9 +163,9 @@ pub fn try_map(
 }
 
 /// Maps the result of a parser to a new value using a mapper function.
-pub fn map(p: Parser(i, a), fun: fn(a) -> b) -> Parser(i, b) {
+pub fn map(parser: Parser(i, a), fun: fn(a) -> b) -> Parser(i, b) {
   new_parser(fn(input: Input(i)) {
-    run(p, input)
+    run(parser, input)
     |> result.map(fn(parsed) {
       Step(
         input: parsed.input,
@@ -178,25 +178,25 @@ pub fn map(p: Parser(i, a), fun: fn(a) -> b) -> Parser(i, b) {
 
 /// Maps the error of a parser to a new error using a mapper function.
 pub fn map_error(
-  p: Parser(i, a),
+  parser: Parser(i, a),
   fun: fn(ParseError(i)) -> ParseError(i),
 ) -> Parser(i, a) {
   new_parser(fn(input: Input(i)) {
-    run(p, input)
+    run(parser, input)
     |> result.map_error(fun)
   })
 }
 
-/// Reports `label` as expected when the parser fails without consuming input.
-pub fn labelled(parser: Parser(i, a), label: String) -> Parser(i, a) {
+/// Reports `name` as expected when the parser fails without consuming input.
+pub fn label(parser: Parser(i, a), name: String) -> Parser(i, a) {
   new_parser(fn(in: Input(i)) {
     let position = input.position(in)
     case run(parser, in) {
       Error(error) if error.position == position ->
-        Error(with_expected(error, [label]))
+        Error(with_expected(error, [name]))
       Ok(Step(furthest_error: Some(error), ..) as parsed)
         if error.position == position
-      -> Ok(Step(..parsed, furthest_error: Some(with_expected(error, [label]))))
+      -> Ok(Step(..parsed, furthest_error: Some(with_expected(error, [name]))))
       result -> result
     }
   })
@@ -207,7 +207,7 @@ pub fn labelled(parser: Parser(i, a), label: String) -> Parser(i, a) {
 /// ```gleam
 /// import pears
 ///
-/// assert pears.parse_string_all("a", pair(peek(just("a")), just("a"))) == Ok(#("a", "a"))
+/// assert pears.parse_string_all("a", pair(peek(token("a")), token("a"))) == Ok(#("a", "a"))
 /// ```
 pub fn peek(parser: Parser(i, a)) -> Parser(i, a) {
   new_parser(fn(in: Input(i)) {
@@ -225,7 +225,7 @@ pub fn peek(parser: Parser(i, a)) -> Parser(i, a) {
 /// import pears/chars
 ///
 /// let letter = satisfying(fn(c) { string.contains("abcdefghijklmnopqrstuvwxyz", c) })
-/// let keyword = left(chars.string("let"), not_followed_by(letter))
+/// let keyword = then_skip(chars.string("let"), not_followed_by(letter))
 /// let assert Ok(_) = pears.parse_string("let x", keyword)
 /// let assert Error(_) = pears.parse_string("letter", keyword)
 /// ```
@@ -252,17 +252,17 @@ pub fn hidden(parser: Parser(i, a)) -> Parser(i, a) {
 }
 
 /// Maps the result of a parser to a constant value.
-pub fn to(parser: Parser(i, a), value: b) -> Parser(i, b) {
+pub fn replace(parser: Parser(i, a), value: b) -> Parser(i, b) {
   map(parser, fn(_) { value })
 }
 
 /// Tries to apply the first parser, if it fails it applies the second parser.
-pub fn alt(parser_1: Parser(i, a), parser_2: Parser(i, a)) -> Parser(i, a) {
+pub fn or(first: Parser(i, a), second: Parser(i, a)) -> Parser(i, a) {
   new_parser(fn(input: Input(i)) {
-    case run(parser_1, input) {
+    case run(first, input) {
       Ok(_) as result -> result
       Error(error_1) ->
-        case run(parser_2, input) {
+        case run(second, input) {
           Ok(parsed) as result ->
             case error_1.position < input.position(parsed.input) {
               True -> result
@@ -295,17 +295,13 @@ pub fn eof() -> Parser(i, Nil) {
   })
 }
 
-/// A predicate function that returns a boolean value for a given input item of type `i`.
-pub type Predicate(i) =
-  fn(i) -> Bool
-
 /// Consumes a single item from the input that satisfies the given predicate function.
-pub fn satisfying(f: Predicate(i)) -> Parser(i, i) {
+pub fn satisfying(predicate: fn(i) -> Bool) -> Parser(i, i) {
   new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
       [] -> Error(UnexpectedEndOfInput(input.position(in), []))
       [token, ..] ->
-        case f(token) {
+        case predicate(token) {
           True -> ok(input.next(in), token)
           False -> Error(UnexpectedToken(input.position(in), [], token))
         }
@@ -314,7 +310,7 @@ pub fn satisfying(f: Predicate(i)) -> Parser(i, i) {
 }
 
 /// Consumes a single item from the input that is equal to the given item.
-pub fn just(item: i) -> Parser(i, i) {
+pub fn token(item: i) -> Parser(i, i) {
   new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
       [] ->
@@ -327,13 +323,10 @@ pub fn just(item: i) -> Parser(i, i) {
 }
 
 /// Applies both parsers and returns a tuple of the results.
-pub fn pair(
-  parser_1 p1: Parser(i, a),
-  parser_2 p2: Parser(i, b),
-) -> Parser(i, #(a, b)) {
+pub fn pair(first: Parser(i, a), second: Parser(i, b)) -> Parser(i, #(a, b)) {
   new_parser(fn(in: Input(i)) {
-    use parsed_1 <- continue(run(p1, in))
-    use parsed_2 <- continue(run(p2, parsed_1.input))
+    use parsed_1 <- continue(run(first, in))
+    use parsed_2 <- continue(run(second, parsed_1.input))
     ok(parsed_2.input, #(parsed_1.value, parsed_2.value))
   })
 }
@@ -358,25 +351,19 @@ fn do_sequence(
 }
 
 /// Applies the first parser and then the second parser, returning the result of the first parser.
-pub fn left(
-  parser_1 p1: Parser(i, a),
-  parser_2 p2: Parser(i, b),
-) -> Parser(i, a) {
+pub fn then_skip(first: Parser(i, a), second: Parser(i, b)) -> Parser(i, a) {
   new_parser(fn(in: Input(i)) {
-    use parsed_1 <- continue(run(p1, in))
-    use parsed_2 <- continue(run(p2, parsed_1.input))
+    use parsed_1 <- continue(run(first, in))
+    use parsed_2 <- continue(run(second, parsed_1.input))
     ok(parsed_2.input, parsed_1.value)
   })
 }
 
 /// Applies the first parser and then the second parser, returning the result of the second parser.
-pub fn right(
-  parser_1 p1: Parser(i, a),
-  parser_2 p2: Parser(i, b),
-) -> Parser(i, b) {
+pub fn skip_then(first: Parser(i, a), second: Parser(i, b)) -> Parser(i, b) {
   new_parser(fn(in: Input(i)) {
-    use parsed_1 <- continue(run(p1, in))
-    use parsed_2 <- continue(run(p2, parsed_1.input))
+    use parsed_1 <- continue(run(first, in))
+    use parsed_2 <- continue(run(second, parsed_1.input))
     ok(parsed_2.input, parsed_2.value)
   })
 }
@@ -430,8 +417,8 @@ pub fn many1(parser: Parser(i, a)) -> Parser(i, List(a)) {
 /// ```gleam
 /// import pears
 ///
-/// assert pears.parse_string_all("aaa", exactly(just("a"), 3)) == Ok(["a", "a", "a"])
-/// let assert Error(_) = pears.parse_string_all("aa", exactly(just("a"), 3))
+/// assert pears.parse_string_all("aaa", exactly(token("a"), 3)) == Ok(["a", "a", "a"])
+/// let assert Error(_) = pears.parse_string_all("aa", exactly(token("a"), 3))
 /// ```
 pub fn exactly(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
   new_parser(fn(in: Input(i)) { do_repeat(parser, in, [], 0, n, Some(n), None) })
@@ -442,8 +429,8 @@ pub fn exactly(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
 /// ```gleam
 /// import pears
 ///
-/// assert pears.parse_string_all("aaa", at_least(just("a"), 2)) == Ok(["a", "a", "a"])
-/// let assert Error(_) = pears.parse_string_all("a", at_least(just("a"), 2))
+/// assert pears.parse_string_all("aaa", at_least(token("a"), 2)) == Ok(["a", "a", "a"])
+/// let assert Error(_) = pears.parse_string_all("a", at_least(token("a"), 2))
 /// ```
 pub fn at_least(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
   new_parser(fn(in: Input(i)) { do_repeat(parser, in, [], 0, n, None, None) })
@@ -454,7 +441,7 @@ pub fn at_least(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
 /// ```gleam
 /// import pears
 ///
-/// let assert Ok(parsed) = pears.parse_string("aaa", at_most(just("a"), 2))
+/// let assert Ok(parsed) = pears.parse_string("aaa", at_most(token("a"), 2))
 /// assert parsed.value == ["a", "a"]
 /// ```
 pub fn at_most(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
@@ -515,7 +502,7 @@ fn do_repeat(
 /// import pears
 /// import pears/chars
 ///
-/// let comment = right(chars.string("/*"), many_till(any(), chars.string("*/")))
+/// let comment = skip_then(chars.string("/*"), many_till(any(), chars.string("*/")))
 /// assert pears.parse_string_all("/*hi*/", comment) == Ok(["h", "i"])
 /// ```
 pub fn many_till(
@@ -581,10 +568,10 @@ fn do_many_till(
 ///   let leaf = map(number(), Leaf)
 ///   let node =
 ///     tree
-///     |> sep_by0(just(","))
-///     |> between(just("["), just("]"))
+///     |> sep_by0(token(","))
+///     |> between(token("["), token("]"))
 ///     |> map(Node)
-///   alt(leaf, node)
+///   or(leaf, node)
 /// }
 /// ```
 pub fn lazy(f: fn() -> Parser(i, a)) -> Parser(i, a) {
@@ -611,8 +598,8 @@ pub fn between(
   close: Parser(i, c),
 ) -> Parser(i, a) {
   open
-  |> right(parser)
-  |> left(close)
+  |> skip_then(parser)
+  |> then_skip(close)
 }
 
 /// Tries to apply the given parsers in order and returns the result of the first one that succeeds.
@@ -655,10 +642,10 @@ fn do_choice(
 /// import pears
 /// import pears/chars
 ///
-/// let minus = to(just("-"), int.subtract)
-/// assert pears.parse_string_all("10-2-3", chainl1(chars.number(), minus)) == Ok(5)
+/// let minus = replace(token("-"), int.subtract)
+/// assert pears.parse_string_all("10-2-3", chain_left(chars.natural(), minus)) == Ok(5)
 /// ```
-pub fn chainl1(
+pub fn chain_left(
   parser: Parser(i, a),
   operator: Parser(i, fn(a, a) -> a),
 ) -> Parser(i, a) {
@@ -670,7 +657,7 @@ pub fn chainl1(
   })
 }
 
-/// Like `chainl1`, but combines the values from right to left, so `10-2-3`
+/// Like `chain_left`, but combines the values from right to left, so `10-2-3`
 /// becomes `10-(2-3)`:
 ///
 /// ```gleam
@@ -678,10 +665,10 @@ pub fn chainl1(
 /// import pears
 /// import pears/chars
 ///
-/// let minus = to(just("-"), int.subtract)
-/// assert pears.parse_string_all("10-2-3", chainr1(chars.number(), minus)) == Ok(11)
+/// let minus = replace(token("-"), int.subtract)
+/// assert pears.parse_string_all("10-2-3", chain_right(chars.natural(), minus)) == Ok(11)
 /// ```
-pub fn chainr1(
+pub fn chain_right(
   parser: Parser(i, a),
   operator: Parser(i, fn(a, a) -> a),
 ) -> Parser(i, a) {
@@ -711,7 +698,10 @@ pub fn sep_by0(
       Error(error) -> Ok(Step(in, [], Some(error)))
       result -> {
         use parsed <- continue(result)
-        use rest <- continue(run(many0(right(separator, parser)), parsed.input))
+        use rest <- continue(run(
+          many0(skip_then(separator, parser)),
+          parsed.input,
+        ))
         ok(rest.input, [parsed.value, ..rest.value])
       }
     }
@@ -725,7 +715,7 @@ pub fn sep_by1(
 ) -> Parser(i, List(a)) {
   new_parser(fn(input: Input(i)) {
     use parsed <- continue(run(parser, input))
-    use rest <- continue(run(many0(right(separator, parser)), parsed.input))
+    use rest <- continue(run(many0(skip_then(separator, parser)), parsed.input))
     ok(rest.input, [parsed.value, ..rest.value])
   })
 }
@@ -735,14 +725,14 @@ pub fn sep_by1(
 /// ```gleam
 /// import pears
 ///
-/// assert pears.parse_string_all("a,a,", sep_end_by0(just("a"), just(","))) == Ok(["a", "a"])
-/// assert pears.parse_string_all("", sep_end_by0(just("a"), just(","))) == Ok([])
+/// assert pears.parse_string_all("a,a,", sep_end_by0(token("a"), token(","))) == Ok(["a", "a"])
+/// assert pears.parse_string_all("", sep_end_by0(token("a"), token(","))) == Ok([])
 /// ```
 pub fn sep_end_by0(
   parser: Parser(i, a),
   separator: Parser(i, b),
 ) -> Parser(i, List(a)) {
-  alt(sep_end_by1(parser, separator), succeed([]))
+  or(sep_end_by1(parser, separator), succeed([]))
 }
 
 /// Like `sep_by1`, but allows a trailing separator.
@@ -750,19 +740,19 @@ pub fn sep_end_by0(
 /// ```gleam
 /// import pears
 ///
-/// assert pears.parse_string_all("a,a,", sep_end_by1(just("a"), just(","))) == Ok(["a", "a"])
-/// let assert Error(_) = pears.parse_string_all(",", sep_end_by1(just("a"), just(",")))
+/// assert pears.parse_string_all("a,a,", sep_end_by1(token("a"), token(","))) == Ok(["a", "a"])
+/// let assert Error(_) = pears.parse_string_all(",", sep_end_by1(token("a"), token(",")))
 /// ```
 pub fn sep_end_by1(
   parser: Parser(i, a),
   separator: Parser(i, b),
 ) -> Parser(i, List(a)) {
-  left(sep_by1(parser, separator), maybe(separator))
+  then_skip(sep_by1(parser, separator), optional(separator))
 }
 
 /// Applies the given parser and wraps the result in an `Option`,
 /// returning `None` if the parser fails instead of an error.
-pub fn maybe(parser: Parser(i, a)) -> Parser(i, Option(a)) {
+pub fn optional(parser: Parser(i, a)) -> Parser(i, Option(a)) {
   new_parser(fn(in: Input(i)) {
     case run(parser, in) {
       Ok(parsed) ->
@@ -789,7 +779,7 @@ pub fn unwrap(parser: Parser(i, Option(a)), default: a) -> Parser(i, a) {
 /// import pears.{Span}
 /// import pears/chars
 ///
-/// let parser = right(chars.string("let "), with_span(chars.string("x")))
+/// let parser = skip_then(chars.string("let "), with_span(chars.string("x")))
 /// assert pears.parse_string_all("let x", parser) == Ok(#("x", Span(4, 5)))
 /// ```
 pub fn with_span(parser: Parser(i, a)) -> Parser(i, #(a, pears.Span)) {

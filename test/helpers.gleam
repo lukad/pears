@@ -3,7 +3,7 @@ import pears.{type ParseError, type Parsed, type Parser, parse_string}
 import pears/input
 
 pub fn should_be_at_end(parsed: Parsed(i, a)) -> Parsed(i, a) {
-  parsed.input
+  parsed.remaining
   |> input.at_end()
   |> should.be_true()
   parsed

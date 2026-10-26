@@ -9,9 +9,9 @@ import pears.{
   UnexpectedToken, new_parser, ok,
 }
 import pears/combinators.{
-  alt, between, choice, exactly, hidden, just, labelled, left, many0, many1, map,
-  maybe, none_of, one_of, pair, recognize, right, satisfying, succeed, then, to,
-  try_map,
+  between, choice, exactly, hidden, label, many0, many1, map, none_of, one_of,
+  optional, or, pair, recognize, replace, satisfying, skip_then, succeed, then,
+  then_skip, token, try_map,
 }
 import pears/input.{type Input}
 
@@ -26,7 +26,7 @@ pub type Char =
 /// Parses a character if it is whitespace according to the Unicode standard.
 pub fn whitespace() -> Parser(Char, Char) {
   satisfying(fn(c) { string.trim(c) == "" })
-  |> labelled("whitespace")
+  |> label("whitespace")
 }
 
 /// Parses zero or more whitespace characters. Hidden from error messages.
@@ -47,12 +47,7 @@ pub fn whitespace1() -> Parser(Char, List(Char)) {
 /// assert pears.parse_string_all("let  ", lexeme(string("let"))) == Ok("let")
 /// ```
 pub fn lexeme(parser: Parser(Char, a)) -> Parser(Char, a) {
-  left(parser, whitespace0())
-}
-
-/// Parses a given character.
-pub fn char(c: Char) -> Parser(Char, Char) {
-  just(c)
+  then_skip(parser, whitespace0())
 }
 
 /// Parses a given string. Errors point at the first character that doesn't match.
@@ -116,19 +111,19 @@ fn do_case_insensitive(
 /// Parses an ASCII letter, a-z or A-Z.
 pub fn letter() -> Parser(Char, Char) {
   satisfying(string.contains(ascii_letters, _))
-  |> labelled("letter")
+  |> label("letter")
 }
 
 /// Parses an ASCII letter or a digit.
 pub fn alphanumeric() -> Parser(Char, Char) {
   satisfying(fn(c) { string.contains(ascii_letters, c) || is_digit(c) })
-  |> labelled("letter or digit")
+  |> label("letter or digit")
 }
 
 /// Parses a hexadecimal digit, 0-9, a-f or A-F.
 pub fn hex_digit() -> Parser(Char, Char) {
   satisfying(string.contains(hex_digits, _))
-  |> labelled("hex digit")
+  |> label("hex digit")
 }
 
 fn is_digit(c: Char) -> Bool {
@@ -141,11 +136,11 @@ fn is_digit(c: Char) -> Bool {
 /// Parses a digit in the range 0-9.
 pub fn digit() -> Parser(Char, Char) {
   satisfying(is_digit)
-  |> labelled("digit")
+  |> label("digit")
 }
 
-/// Parses a number consisting of one or more digits.
-pub fn number() -> Parser(Char, Int) {
+/// Parses a non-negative integer consisting of one or more digits.
+pub fn natural() -> Parser(Char, Int) {
   many1(digit())
   |> map(fn(digits) {
     let assert Ok(number) = int.parse(string.concat(digits))
@@ -162,14 +157,14 @@ pub fn number() -> Parser(Char, Int) {
 /// ```
 pub fn integer() -> Parser(Char, Int) {
   {
-    use sign <- then(maybe(char("-")))
-    use number <- then(number())
+    use sign <- then(optional(token("-")))
+    use number <- then(natural())
     case sign {
       Some(_) -> succeed(-number)
       None -> succeed(number)
     }
   }
-  |> labelled("integer")
+  |> label("integer")
 }
 
 /// Parses a number with a fractional part and an optional exponent, like
@@ -183,16 +178,16 @@ pub fn integer() -> Parser(Char, Int) {
 pub fn float() -> Parser(Char, Float) {
   let digits = many1(digit())
   let exponent =
-    pair(one_of(["e", "E"]), pair(maybe(one_of(["+", "-"])), digits))
+    pair(one_of(["e", "E"]), pair(optional(one_of(["+", "-"])), digits))
   recognize(pair(
-    pair(maybe(char("-")), digits),
-    pair(pair(char("."), digits), maybe(exponent)),
+    pair(optional(token("-")), digits),
+    pair(pair(token("."), digits), optional(exponent)),
   ))
   |> try_map(fn(chars) {
     float.parse(string.concat(chars))
     |> result.replace_error("float out of range")
   })
-  |> labelled("float")
+  |> label("float")
 }
 
 /// Parses a double-quoted string with JSON-style escapes (`\"`, `\\`, `\/`,
@@ -205,7 +200,7 @@ pub fn float() -> Parser(Char, Float) {
 /// ```
 pub fn string_literal() -> Parser(Char, String) {
   let unicode =
-    right(char("u"), exactly(hex_digit(), 4))
+    skip_then(token("u"), exactly(hex_digit(), 4))
     |> try_map(fn(digits) {
       int.base_parse(string.concat(digits), 16)
       |> result.try(string.utf_codepoint)
@@ -213,25 +208,25 @@ pub fn string_literal() -> Parser(Char, String) {
       |> result.replace_error("invalid code point")
     })
   let escape =
-    right(
-      char("\\"),
+    skip_then(
+      token("\\"),
       choice([
-        char("\""),
-        char("\\"),
-        char("/"),
-        to(char("b"), "\u{0008}"),
-        to(char("f"), "\u{000C}"),
-        to(char("n"), "\n"),
-        to(char("r"), "\r"),
-        to(char("t"), "\t"),
+        token("\""),
+        token("\\"),
+        token("/"),
+        replace(token("b"), "\u{0008}"),
+        replace(token("f"), "\u{000C}"),
+        replace(token("n"), "\n"),
+        replace(token("r"), "\r"),
+        replace(token("t"), "\t"),
         unicode,
       ]),
     )
-  alt(none_of(["\"", "\\"]), escape)
+  or(none_of(["\"", "\\"]), escape)
   |> many0()
   |> map(string.concat)
-  |> between(char("\""), char("\""))
-  |> labelled("string")
+  |> between(token("\""), token("\""))
+  |> label("string")
 }
 
 /// Parses `start` and the rest of the line, returning the text after `start`.
@@ -244,7 +239,7 @@ pub fn string_literal() -> Parser(Char, String) {
 /// assert parsed.value == " hi"
 /// ```
 pub fn line_comment(start: String) -> Parser(Char, String) {
-  right(string(start), many0(none_of(["\n", "\r\n"])))
+  skip_then(string(start), many0(none_of(["\n", "\r\n"])))
   |> map(string.concat)
 }
 

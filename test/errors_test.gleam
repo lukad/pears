@@ -3,19 +3,19 @@ import helpers.{should_fail_with}
 import pears.{Custom, UnexpectedEndOfInput, UnexpectedToken}
 import pears/chars
 import pears/combinators.{
-  alt, between, choice, eof, exactly, fail, hidden, just, labelled, left, many0,
-  many_till, maybe, none_of, not_followed_by, pair, peek, right, satisfying,
-  sep_by0, seq, succeed, then, try_map,
+  between, choice, eof, exactly, fail, hidden, label, many0, many_till, none_of,
+  not_followed_by, optional, or, pair, peek, satisfying, sep_by0, seq, skip_then,
+  succeed, then, then_skip, token, try_map,
 }
 
 pub fn just_test() {
-  just("a")
+  token("a")
   |> should_fail_with("b", UnexpectedToken(0, ["\"a\""], "b"))
   |> should_fail_with("", UnexpectedEndOfInput(0, ["\"a\""]))
 }
 
 pub fn position_after_consumed_input_test() {
-  right(just("a"), just("b"))
+  skip_then(token("a"), token("b"))
   |> should_fail_with("ac", UnexpectedToken(1, ["\"b\""], "c"))
 }
 
@@ -27,23 +27,23 @@ pub fn string_points_at_mismatch_test() {
 }
 
 pub fn alt_merges_expected_test() {
-  alt(just("a"), just("b"))
+  or(token("a"), token("b"))
   |> should_fail_with("c", UnexpectedToken(0, ["\"a\"", "\"b\""], "c"))
   |> should_fail_with("", UnexpectedEndOfInput(0, ["\"a\"", "\"b\""]))
 }
 
 pub fn alt_keeps_furthest_error_test() {
-  alt(chars.string("ab"), chars.string("x"))
+  or(chars.string("ab"), chars.string("x"))
   |> should_fail_with("ac", UnexpectedToken(1, ["\"ab\""], "c"))
 }
 
 pub fn choice_merges_expected_test() {
-  choice([just("a"), just("b"), just("a")])
+  choice([token("a"), token("b"), token("a")])
   |> should_fail_with("c", UnexpectedToken(0, ["\"a\"", "\"b\""], "c"))
 }
 
 pub fn choice_keeps_furthest_error_test() {
-  choice([seq([just("a"), just("b"), just("c")]), seq([just("x")])])
+  choice([seq([token("a"), token("b"), token("c")]), seq([token("x")])])
   |> should_fail_with("abx", UnexpectedToken(2, ["\"c\""], "x"))
 }
 
@@ -53,17 +53,17 @@ pub fn empty_choice_test() {
 }
 
 pub fn labelled_test() {
-  labelled(just("a"), "letter a")
+  label(token("a"), "letter a")
   |> should_fail_with("b", UnexpectedToken(0, ["letter a"], "b"))
   |> should_fail_with("", UnexpectedEndOfInput(0, ["letter a"]))
 
   // errors after consuming input are more specific and kept as is
-  labelled(chars.string("ab"), "keyword")
+  label(chars.string("ab"), "keyword")
   |> should_fail_with("ax", UnexpectedToken(1, ["\"ab\""], "x"))
 }
 
 pub fn eof_test() {
-  left(just("a"), eof())
+  then_skip(token("a"), eof())
   |> should_fail_with("ab", UnexpectedToken(1, ["end of input"], "b"))
 }
 
@@ -114,54 +114,54 @@ pub fn chars_format_error_test() {
 }
 
 pub fn many0_keeps_recovered_error_test() {
-  left(many0(just("a")), just("b"))
+  then_skip(many0(token("a")), token("b"))
   |> should_fail_with("aac", UnexpectedToken(2, ["\"a\"", "\"b\""], "c"))
 }
 
 pub fn maybe_keeps_recovered_error_test() {
-  pair(maybe(just("-")), just("1"))
+  pair(optional(token("-")), token("1"))
   |> should_fail_with("x", UnexpectedToken(0, ["\"-\"", "\"1\""], "x"))
 }
 
 pub fn sep_by0_keeps_recovered_error_test() {
-  sep_by0(just("a"), just(","))
-  |> between(just("["), just("]"))
+  sep_by0(token("a"), token(","))
+  |> between(token("["), token("]"))
   |> should_fail_with("[a a]", UnexpectedToken(2, ["\",\"", "\"]\""], " "))
 }
 
 pub fn recovered_error_further_than_failure_wins_test() {
-  sep_by0(chars.string("ab"), just(","))
-  |> between(just("["), just("]"))
+  sep_by0(chars.string("ab"), token(","))
+  |> between(token("["), token("]"))
   |> should_fail_with("[ab,ax]", UnexpectedToken(5, ["\"ab\""], "x"))
 }
 
 pub fn stale_recovered_error_is_dropped_test() {
-  left(many0(just("a")), just("b"))
-  |> left(just("c"))
+  then_skip(many0(token("a")), token("b"))
+  |> then_skip(token("c"))
   |> should_fail_with("aabx", UnexpectedToken(3, ["\"c\""], "x"))
 }
 
 pub fn hidden_test() {
-  left(hidden(many0(just(" "))), just("a"))
+  then_skip(hidden(many0(token(" "))), token("a"))
   |> should_fail_with(" b", UnexpectedToken(1, ["\"a\""], "b"))
 
-  hidden(just("a"))
+  hidden(token("a"))
   |> should_fail_with("b", UnexpectedToken(0, [], "b"))
 
-  left(chars.whitespace0(), just("a"))
+  then_skip(chars.whitespace0(), token("a"))
   |> should_fail_with("  b", UnexpectedToken(2, ["\"a\""], "b"))
 }
 
 pub fn labelled_relabels_recovered_error_test() {
-  left(labelled(maybe(just("-")), "sign"), just("1"))
+  then_skip(label(optional(token("-")), "sign"), token("1"))
   |> should_fail_with("x", UnexpectedToken(0, ["sign", "\"1\""], "x"))
 }
 
 pub fn then_test() {
-  then(just("a"), fn(_) { succeed(1) })
+  then(token("a"), fn(_) { succeed(1) })
   |> should_fail_with("b", UnexpectedToken(0, ["\"a\""], "b"))
 
-  then(many0(just("a")), fn(_) { just("b") })
+  then(many0(token("a")), fn(_) { token("b") })
   |> should_fail_with("aac", UnexpectedToken(2, ["\"a\"", "\"b\""], "c"))
 }
 
@@ -169,43 +169,43 @@ pub fn fail_test() {
   fail("oops")
   |> should_fail_with("", Custom(0, "oops"))
 
-  right(just("a"), fail("oops"))
+  skip_then(token("a"), fail("oops"))
   |> should_fail_with("ab", Custom(1, "oops"))
 
   // a custom error wins over expected tokens at the same position
-  then(maybe(just("-")), fn(_) { fail("oops") })
+  then(optional(token("-")), fn(_) { fail("oops") })
   |> should_fail_with("x", Custom(0, "oops"))
 }
 
 pub fn custom_error_merging_test() {
-  alt(fail("oops"), just("a"))
+  or(fail("oops"), token("a"))
   |> should_fail_with("b", Custom(0, "oops"))
 
-  alt(just("a"), fail("oops"))
+  or(token("a"), fail("oops"))
   |> should_fail_with("b", Custom(0, "oops"))
 
   // errors further into the input still win
-  alt(fail("oops"), chars.string("ab"))
+  or(fail("oops"), chars.string("ab"))
   |> should_fail_with("ac", UnexpectedToken(1, ["\"ab\""], "c"))
 
-  labelled(fail("oops"), "thing")
+  label(fail("oops"), "thing")
   |> should_fail_with("a", Custom(0, "oops"))
 }
 
 pub fn try_map_test() {
   let even =
-    try_map(chars.number(), fn(n) {
+    try_map(chars.natural(), fn(n) {
       case n % 2 {
         0 -> Ok(n)
         _ -> Error("expected an even number")
       }
     })
 
-  right(just("x"), even)
+  skip_then(token("x"), even)
   |> should_fail_with("x13", Custom(1, "expected an even number"))
 
   // errors recovered inside the mapped parser are dropped
-  try_map(many0(just("a")), fn(_) { Error("nope") })
+  try_map(many0(token("a")), fn(_) { Error("nope") })
   |> should_fail_with("aab", Custom(0, "nope"))
 }
 
@@ -215,29 +215,29 @@ pub fn chars_custom_errors_test() {
 }
 
 pub fn peek_test() {
-  peek(just("a"))
+  peek(token("a"))
   |> should_fail_with("b", UnexpectedToken(0, ["\"a\""], "b"))
 
-  left(peek(many0(just("a"))), just("b"))
+  then_skip(peek(many0(token("a"))), token("b"))
   |> should_fail_with("aac", UnexpectedToken(0, ["\"b\""], "a"))
 }
 
 pub fn not_followed_by_test() {
   let letter = satisfying(fn(c) { c == "x" || c == "y" })
-  left(chars.string("let"), not_followed_by(letter))
+  then_skip(chars.string("let"), not_followed_by(letter))
   |> should_fail_with("letx", UnexpectedToken(3, [], "x"))
 }
 
 pub fn exactly_test() {
-  exactly(just("a"), 3)
+  exactly(token("a"), 3)
   |> should_fail_with("aab", UnexpectedToken(2, ["\"a\""], "b"))
 }
 
 pub fn many_till_test() {
-  many_till(just("a"), just(";"))
+  many_till(token("a"), token(";"))
   |> should_fail_with("aab", UnexpectedToken(2, ["\";\"", "\"a\""], "b"))
 
   // a parser that consumes nothing can never reach the end
-  many_till(succeed(1), just(";"))
+  many_till(succeed(1), token(";"))
   |> should_fail_with("x", UnexpectedToken(0, ["\";\""], "x"))
 }

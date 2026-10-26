@@ -8,9 +8,9 @@
 //// ```gleam
 //// import pears.{UnexpectedToken}
 //// import pears/chars
-//// import pears/combinators.{alt, between, choice, just, left, many0, many1, map, pair, right, sep_by0, succeed, then, to}
+//// import pears/combinators.{between, choice, many0, many1, map, or, pair, replace, sep_by0, skip_then, succeed, then, then_skip, token}
 ////
-//// let a_parser = just("a")
+//// let a_parser = token("a")
 //// let assert Ok(parsed) = parse_string("abc", a_parser)
 //// assert parsed.value == "a"
 //// ```
@@ -21,8 +21,8 @@
 //// It fails if any input is left over:
 ////
 //// ```gleam
-//// assert parse_string_all("a", just("a")) == Ok("a")
-//// assert parse_string_all("abc", just("a")) == Error(UnexpectedToken(1, ["end of input"], "b"))
+//// assert parse_string_all("a", token("a")) == Ok("a")
+//// assert parse_string_all("abc", token("a")) == Error(UnexpectedToken(1, ["end of input"], "b"))
 //// ```
 ////
 //// ### Combinators
@@ -34,14 +34,14 @@
 //// It runs the first parser and then the second one, returning both results as a tuple:
 ////
 //// ```gleam
-//// assert parse_string_all("ab", pair(just("a"), just("b"))) == Ok(#("a", "b"))
+//// assert parse_string_all("ab", pair(token("a"), token("b"))) == Ok(#("a", "b"))
 //// ```
 ////
 //// To create parsers that are actually useful we need to be able to branch based on the input,
-//// for that we can use the `alt` combinator:
+//// for that we can use the `or` combinator:
 ////
 //// ```gleam
-//// let a_or_b_parser = alt(just("a"), just("b"))
+//// let a_or_b_parser = or(token("a"), token("b"))
 //// assert parse_string_all("a", a_or_b_parser) == Ok("a")
 //// assert parse_string_all("b", a_or_b_parser) == Ok("b")
 //// ```
@@ -49,7 +49,7 @@
 //// In cases where there are more than two options, we can use the `choice` combinator:
 ////
 //// ```gleam
-//// let a_b_or_c_parser = choice([just("a"), just("b"), just("c")])
+//// let a_b_or_c_parser = choice([token("a"), token("b"), token("c")])
 //// assert parse_string_all("c", a_b_or_c_parser) == Ok("c")
 //// ```
 ////
@@ -57,18 +57,18 @@
 //// They allow us to parse zero or more or one or more repetitions of a parser:
 ////
 //// ```gleam
-//// let abc0_parser = many0(choice([just("a"), just("b"), just("c")]))
+//// let abc0_parser = many0(choice([token("a"), token("b"), token("c")]))
 //// assert parse_string_all("cab", abc0_parser) == Ok(["c", "a", "b"])
 //// assert parse_string_all("", abc0_parser) == Ok([])
 //// ```
 ////
 //// Sometimes we want to parse something and then ignore the result,
-//// for that we can use the `left` and `right` combinators.
-//// `left` keeps the result of the first parser and `right` the result of the second:
+//// for that we can use the `then_skip` and `skip_then` combinators.
+//// `then_skip` keeps the result of the first parser and `skip_then` the result of the second:
 ////
 //// ```gleam
-//// assert parse_string_all("ab", left(just("a"), just("b"))) == Ok("a")
-//// assert parse_string_all("ab", right(just("a"), just("b"))) == Ok("b")
+//// assert parse_string_all("ab", then_skip(token("a"), token("b"))) == Ok("a")
+//// assert parse_string_all("ab", skip_then(token("a"), token("b"))) == Ok("b")
 //// ```
 ////
 //// Longer sequences are easier to write with `then` and Gleam's `use` syntax.
@@ -76,9 +76,9 @@
 ////
 //// ```gleam
 //// let point = {
-////   use x <- then(chars.number())
-////   use _ <- then(just(","))
-////   use y <- then(chars.number())
+////   use x <- then(chars.natural())
+////   use _ <- then(token(","))
+////   use y <- then(chars.natural())
 ////   succeed(#(x, y))
 //// }
 //// assert parse_string_all("1,2", point) == Ok(#(1, 2))
@@ -89,14 +89,14 @@
 //// separated by a delimiter:
 ////
 //// ```gleam
-//// let letters = sep_by0(choice([just("a"), just("b"), just("c")]), just(","))
+//// let letters = sep_by0(choice([token("a"), token("b"), token("c")]), token(","))
 //// assert parse_string_all("a,b,c", letters) == Ok(["a", "b", "c"])
 //// ```
 ////
 //// ### Transforming the results
 ////
 //// The `map` combinator transforms the result of a parser using a function.
-//// Here we parse one or more digits and turn them into an `Int`, which is what `chars.number` does:
+//// Here we parse one or more digits and turn them into an `Int`, which is what `chars.natural` does:
 ////
 //// ```gleam
 //// let number_parser =
@@ -108,14 +108,14 @@
 //// assert parse_string_all("42", number_parser) == Ok(42)
 //// ```
 ////
-//// `to` is a shorthand for `map` that ignores the parsed value and returns a constant:
+//// `replace` is a shorthand for `map` that ignores the parsed value and returns a constant:
 ////
 //// ```gleam
 //// let bool_parser =
-////   alt(to(chars.string("true"), True), to(chars.string("false"), False))
+////   or(replace(chars.string("true"), True), replace(chars.string("false"), False))
 //// let bools_parser =
-////   sep_by0(bool_parser, just(","))
-////   |> between(just("["), just("]"))
+////   sep_by0(bool_parser, token(","))
+////   |> between(token("["), token("]"))
 //// assert parse_string_all("[true,false]", bools_parser) == Ok([True, False])
 //// ```
 ////
@@ -127,7 +127,7 @@
 ////
 //// ```gleam
 //// let source = "a,b;c"
-//// let letters = sep_by0(choice([just("a"), just("b"), just("c")]), just(","))
+//// let letters = sep_by0(choice([token("a"), token("b"), token("c")]), token(","))
 //// let assert Error(error) = parse_string_all(source, letters)
 //// assert chars.format_error(error, source) == "line 1, column 4: expected \",\" or end of input, found \";\""
 //// ```
@@ -154,7 +154,7 @@ pub opaque type Parser(i, a) {
 /// Returned by `parse` and `parse_string` when parsing succeeds. It contains
 /// the remaining input and the parsed value.
 pub type Parsed(i, a) {
-  Parsed(input: Input(i), value: a)
+  Parsed(remaining: Input(i), value: a)
 }
 
 /// The tokens from `start` up to, but not including, `end`.
@@ -200,10 +200,10 @@ pub fn ok(input: Input(i), value: a) -> StepResult(i, a) {
 
 /// Runs a parser on a list of tokens. The parser doesn't have to consume all of them.
 pub fn parse(
-  i: List(i),
-  p: Parser(i, a),
+  tokens: List(i),
+  parser: Parser(i, a),
 ) -> Result(Parsed(i, a), ParseError(i)) {
-  case p.run(input.new(i)) {
+  case parser.run(input.new(tokens)) {
     Ok(step) -> Ok(Parsed(step.input, step.value))
     Error(error) -> Error(error)
   }
@@ -211,18 +211,21 @@ pub fn parse(
 
 /// Runs a parser on the graphemes of a string. The parser doesn't have to consume all of them.
 pub fn parse_string(
-  i: String,
-  p: Parser(String, a),
+  text: String,
+  parser: Parser(String, a),
 ) -> Result(Parsed(String, a), ParseError(String)) {
-  i
+  text
   |> string.to_graphemes()
-  |> parse(p)
+  |> parse(parser)
 }
 
 /// Runs a parser on a list of tokens and returns the parsed value.
 /// Fails if any tokens are left over.
-pub fn parse_all(i: List(i), p: Parser(i, a)) -> Result(a, ParseError(i)) {
-  case p.run(input.new(i)) {
+pub fn parse_all(
+  tokens: List(i),
+  parser: Parser(i, a),
+) -> Result(a, ParseError(i)) {
+  case parser.run(input.new(tokens)) {
     Error(error) -> Error(error)
     Ok(Step(rest, value, furthest_error)) ->
       case input.tokens(rest) {
@@ -242,12 +245,12 @@ pub fn parse_all(i: List(i), p: Parser(i, a)) -> Result(a, ParseError(i)) {
 /// Runs a parser on the graphemes of a string and returns the parsed value.
 /// Fails if any graphemes are left over.
 pub fn parse_string_all(
-  i: String,
-  p: Parser(String, a),
+  text: String,
+  parser: Parser(String, a),
 ) -> Result(a, ParseError(String)) {
-  i
+  text
   |> string.to_graphemes()
-  |> parse_all(p)
+  |> parse_all(parser)
 }
 
 /// Keeps the error that got furthest, combining expectations at the same position.

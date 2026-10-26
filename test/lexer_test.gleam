@@ -9,8 +9,8 @@ import gleeunit/should
 import pears.{type Parser, type Span, Span}
 import pears/chars.{type Char}
 import pears/combinators.{
-  between, chainl1, choice, just, labelled, lazy, many0, map, pair, recognize,
-  right, satisfying, succeed, then, to, with_span,
+  between, chain_left, choice, label, lazy, many0, map, pair, recognize, replace,
+  satisfying, skip_then, succeed, then, token, with_span,
 }
 
 pub type Token {
@@ -50,23 +50,23 @@ fn lexer() -> Parser(Char, List(#(Token, Span))) {
   let token =
     choice([
       word,
-      map(chars.number(), Number),
-      to(chars.char("="), Equals),
-      to(chars.char("+"), Plus),
-      to(chars.char("*"), Star),
-      to(chars.char("("), LParen),
-      to(chars.char(")"), RParen),
+      map(chars.natural(), Number),
+      replace(token("="), Equals),
+      replace(token("+"), Plus),
+      replace(token("*"), Star),
+      replace(token("("), LParen),
+      replace(token(")"), RParen),
     ])
-    |> labelled("token")
+    |> label("token")
 
-  right(chars.whitespace0(), many0(chars.lexeme(with_span(token))))
+  skip_then(chars.whitespace0(), many0(chars.lexeme(with_span(token))))
 }
 
 // Parser: tokens to AST
 
 /// Parses a token that `f` turns into `Ok(value)`.
 fn match_token(
-  label: String,
+  name: String,
   f: fn(Token) -> Result(a, Nil),
 ) -> Parser(Token, a) {
   {
@@ -74,7 +74,7 @@ fn match_token(
     let assert Ok(value) = f(token)
     succeed(value)
   }
-  |> labelled(label)
+  |> label(name)
 }
 
 fn identifier() -> Parser(Token, String) {
@@ -98,16 +98,16 @@ fn expression() -> Parser(Token, Expr) {
     choice([
       map(number(), Num),
       map(identifier(), Var),
-      between(lazy(expression), just(LParen), just(RParen)),
+      between(lazy(expression), token(LParen), token(RParen)),
     ])
-  let term = chainl1(atom, to(just(Star), Mul))
-  chainl1(term, to(just(Plus), Add))
+  let term = chain_left(atom, replace(token(Star), Mul))
+  chain_left(term, replace(token(Plus), Add))
 }
 
 fn statement() -> Parser(Token, Statement) {
-  use _ <- then(just(Let))
+  use _ <- then(token(Let))
   use name <- then(identifier())
-  use _ <- then(just(Equals))
+  use _ <- then(token(Equals))
   use value <- then(expression())
   succeed(Statement(name, value))
 }

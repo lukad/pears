@@ -1,9 +1,10 @@
 import gleam/list
 import helpers.{should_parse}
 import pears.{type Parser}
-import pears/chars.{type Char, char}
+import pears/chars.{type Char}
 import pears/combinators.{
-  alt, between, eof, lazy, left, many0, many1, map, none_of, right, to,
+  between, eof, lazy, many0, many1, map, none_of, or, replace, skip_then,
+  then_skip, token,
 }
 
 pub type Program =
@@ -31,38 +32,38 @@ fn comment() -> Parser(Char, List(Char)) {
 }
 
 fn instructions_parser() -> Parser(Char, Program) {
-  let padded = fn(p) { right(comment(), p) }
+  let padded = fn(p) { skip_then(comment(), p) }
   let add =
-    alt(char("+"), char("-"))
+    or(token("+"), token("-"))
     |> many1()
     |> map(fn(x) { Add(count(x, "+") - count(x, "-")) })
 
   let move =
-    alt(char(">"), char("<"))
+    or(token(">"), token("<"))
     |> many1()
     |> map(fn(x) { Mov(count(x, ">") - count(x, "<")) })
 
-  let read = to(char(","), Read)
-  let write = to(char("."), Write)
+  let read = replace(token(","), Read)
+  let write = replace(token("."), Write)
 
   let loop =
     lazy(instructions_parser)
-    |> between(char("["), char("]"))
+    |> between(token("["), token("]"))
     |> map(Loop)
 
   add
-  |> alt(move)
-  |> alt(read)
-  |> alt(write)
-  |> alt(loop)
+  |> or(move)
+  |> or(read)
+  |> or(write)
+  |> or(loop)
   |> padded()
   |> many0()
 }
 
 fn bf_parser() -> Parser(Char, Program) {
   instructions_parser()
-  |> left(comment())
-  |> left(eof())
+  |> then_skip(comment())
+  |> then_skip(eof())
 }
 
 pub fn parse_simple_instructions_test() {

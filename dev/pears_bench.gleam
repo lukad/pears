@@ -10,9 +10,9 @@ import gleam/list
 import gleam/string
 import gleamy/bench
 import pears.{type Parser, parse_string}
-import pears/chars.{type Char, number}
+import pears/chars.{type Char, natural}
 import pears/combinators.{
-  alt, between, eof, just, lazy, left, many0, map, sep_by0,
+  between, eof, lazy, many0, map, or, sep_by0, then_skip, token,
 }
 
 pub type Tree {
@@ -28,10 +28,10 @@ pub fn main() {
       bench.Input("100k chars", 100_000),
     ],
     [
-      parser_bench("many0(just)", many0(just("a")), fn(size) {
+      parser_bench("many0(token)", many0(token("a")), fn(size) {
         string.repeat("a", size)
       }),
-      parser_bench("sep_by0(number)", sep_by0(number(), just(",")), fn(size) {
+      parser_bench("sep_by0(number)", sep_by0(natural(), token(",")), fn(size) {
         list.repeat("12345", size / 6)
         |> string.join(",")
       }),
@@ -59,7 +59,7 @@ fn parser_bench(
   parser: Parser(Char, a),
   make_input: fn(Int) -> String,
 ) -> bench.Function(Int, Nil) {
-  let parser = left(parser, eof())
+  let parser = then_skip(parser, eof())
   bench.SetupFunction(label, fn(size) {
     let input = make_input(size)
     let assert Ok(_) = parse_string(input, parser)
@@ -71,15 +71,15 @@ fn parser_bench(
 }
 
 fn keywords() -> Parser(Char, List(String)) {
-  many0(alt(chars.string("foo"), chars.string("bar")))
+  many0(or(chars.string("foo"), chars.string("bar")))
 }
 
 fn tree() -> Parser(Char, Tree) {
-  let leaf = map(number(), Leaf)
+  let leaf = map(natural(), Leaf)
   let node =
     lazy(tree)
-    |> sep_by0(just(","))
-    |> between(just("["), just("]"))
+    |> sep_by0(token(","))
+    |> between(token("["), token("]"))
     |> map(Node)
-  alt(leaf, node)
+  or(leaf, node)
 }

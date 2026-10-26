@@ -5,13 +5,13 @@ import helpers.{should_not_parse, should_parse}
 import pears.{Span}
 import pears/chars
 import pears/combinators.{
-  any, at_least, at_most, between, exactly, just, left, many0, many1, many_till,
-  maybe, not_followed_by, one_of, pair, peek, recognize, right, sep_by0,
-  sep_end_by0, sep_end_by1, seq, succeed, then, with_span,
+  any, at_least, at_most, between, exactly, many0, many1, many_till,
+  not_followed_by, one_of, optional, pair, peek, recognize, sep_by0, sep_end_by0,
+  sep_end_by1, seq, skip_then, succeed, then, then_skip, token, with_span,
 }
 
 pub fn pair_test() {
-  pair(just("a"), just("b"))
+  pair(token("a"), token("b"))
   |> should_parse("ab", #("a", "b"))
   |> should_parse("abc", #("a", "b"))
   |> should_not_parse("ac")
@@ -25,7 +25,7 @@ pub fn one_of_test() {
 }
 
 pub fn many_test() {
-  many0(just("a"))
+  many0(token("a"))
   |> should_parse("aaa", ["a", "a", "a"])
   |> should_parse("aaab", ["a", "a", "a"])
   |> should_parse("b", [])
@@ -33,70 +33,70 @@ pub fn many_test() {
 
 pub fn many_long_input_test() {
   let n = 100_000
-  many0(just("a"))
+  many0(token("a"))
   |> should_parse(string.repeat("a", n), list.repeat("a", n))
 
-  many1(just("a"))
+  many1(token("a"))
   |> should_parse(string.repeat("a", n), list.repeat("a", n))
 
-  sep_by0(just("a"), just(","))
+  sep_by0(token("a"), token(","))
   |> should_parse(list.repeat("a", n) |> string.join(","), list.repeat("a", n))
 }
 
 pub fn many_stops_on_empty_match_test() {
-  many0(maybe(just("a")))
+  many0(optional(token("a")))
   |> should_parse("aab", [Some("a"), Some("a")])
   |> should_parse("b", [])
 
-  many0(many0(just("a")))
+  many0(many0(token("a")))
   |> should_parse("aab", [["a", "a"]])
   |> should_parse("b", [])
 
-  many1(maybe(just("a")))
+  many1(optional(token("a")))
   |> should_parse("b", [None])
 }
 
 pub fn many1_test() {
-  many1(just("a"))
+  many1(token("a"))
   |> should_parse("aaa", ["a", "a", "a"])
   |> should_parse("aaab", ["a", "a", "a"])
   |> should_not_parse("b")
 }
 
 pub fn between_test() {
-  between(just("a"), just("("), just(")"))
+  between(token("a"), token("("), token(")"))
   |> should_parse("(a)", "a")
   |> should_not_parse("(b)")
 
-  between(many1(just("a")), just("("), just(")"))
-  |> between(just("["), just("]"))
+  between(many1(token("a")), token("("), token(")"))
+  |> between(token("["), token("]"))
   |> should_parse("[(a)]", ["a"])
 }
 
 pub fn seq_test() {
-  seq([just("a"), just("b"), just("c")])
+  seq([token("a"), token("b"), token("c")])
   |> should_parse("abc", ["a", "b", "c"])
   |> should_not_parse("ab")
 }
 
 pub fn recognize_test() {
-  just("x")
-  |> right(recognize(pair(just("a"), just("b"))))
+  token("x")
+  |> skip_then(recognize(pair(token("a"), token("b"))))
   |> should_parse("xabc", ["a", "b"])
   |> should_not_parse("xac")
 }
 
 pub fn string_test() {
-  just("x")
-  |> right(chars.string("ab"))
-  |> right(just("c"))
+  token("x")
+  |> skip_then(chars.string("ab"))
+  |> skip_then(token("c"))
   |> should_parse("xabc", "c")
   |> should_not_parse("xab")
   |> should_not_parse("xac")
 }
 
 pub fn succeed_test() {
-  left(succeed(1), just("a"))
+  then_skip(succeed(1), token("a"))
   |> should_parse("a", 1)
 }
 
@@ -114,73 +114,73 @@ pub fn then_test() {
 }
 
 pub fn peek_test() {
-  pair(peek(just("a")), many0(just("a")))
+  pair(peek(token("a")), many0(token("a")))
   |> should_parse("aa", #("a", ["a", "a"]))
 }
 
 pub fn not_followed_by_test() {
-  left(chars.string("let"), not_followed_by(one_of(["x", "y"])))
+  then_skip(chars.string("let"), not_followed_by(one_of(["x", "y"])))
   |> should_parse("let", "let")
   |> should_parse("let z", "let")
   |> should_not_parse("letx")
 }
 
 pub fn exactly_test() {
-  exactly(just("a"), 2)
+  exactly(token("a"), 2)
   |> should_parse("aaa", ["a", "a"])
   |> should_not_parse("a")
 
-  exactly(maybe(just("a")), 3)
+  exactly(optional(token("a")), 3)
   |> should_parse("a", [Some("a"), None, None])
 }
 
 pub fn at_least_test() {
-  at_least(just("a"), 2)
+  at_least(token("a"), 2)
   |> should_parse("aa", ["a", "a"])
   |> should_parse("aaaa", ["a", "a", "a", "a"])
   |> should_not_parse("a")
 
-  at_least(maybe(just("a")), 0)
+  at_least(optional(token("a")), 0)
   |> should_parse("", [])
 }
 
 pub fn at_most_test() {
-  at_most(just("a"), 2)
+  at_most(token("a"), 2)
   |> should_parse("", [])
   |> should_parse("aaa", ["a", "a"])
 
-  at_most(maybe(just("a")), 3)
+  at_most(optional(token("a")), 3)
   |> should_parse("", [])
 }
 
 pub fn many_till_test() {
-  many_till(any(), just(";"))
+  many_till(any(), token(";"))
   |> should_parse(";", [])
   |> should_parse("ab;c", ["a", "b"])
   |> should_not_parse("ab")
 
   let n = 100_000
-  many_till(just("a"), just(";"))
+  many_till(token("a"), token(";"))
   |> should_parse(string.repeat("a", n) <> ";", list.repeat("a", n))
 }
 
 pub fn sep_end_by_test() {
-  sep_end_by0(just("a"), just(","))
+  sep_end_by0(token("a"), token(","))
   |> should_parse("", [])
   |> should_parse(",", [])
   |> should_parse("a,a", ["a", "a"])
   |> should_parse("a,a,", ["a", "a"])
 
-  sep_end_by1(just("a"), just(","))
+  sep_end_by1(token("a"), token(","))
   |> should_parse("a,", ["a"])
   |> should_not_parse(",")
 }
 
 pub fn with_span_test() {
-  with_span(many0(just("a")))
+  with_span(many0(token("a")))
   |> should_parse("aab", #(["a", "a"], Span(0, 2)))
   |> should_parse("b", #([], Span(0, 0)))
 
-  right(just("x"), with_span(chars.string("ab")))
+  skip_then(token("x"), with_span(chars.string("ab")))
   |> should_parse("xab", #("ab", Span(1, 3)))
 }

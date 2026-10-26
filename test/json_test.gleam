@@ -9,8 +9,9 @@ import helpers.{should_not_parse, should_parse}
 import pears.{type Parser}
 import pears/chars.{type Char, digit, string}
 import pears/combinators.{
-  alt, between, choice, eof, hidden, just, lazy, left, many0, many1, map, maybe,
-  none_of, one_of, pair, recognize, right, sep_by0, seq, to,
+  between, choice, eof, hidden, lazy, many0, many1, map, none_of, one_of,
+  optional, or, pair, recognize, replace, sep_by0, seq, skip_then, then_skip,
+  token,
 }
 
 pub type Json {
@@ -29,7 +30,7 @@ fn whitespace0() -> Parser(Char, List(Char)) {
 }
 
 fn value_parser() -> Parser(Char, Json) {
-  let padded = fn(parser: Parser(_, a)) { left(parser, whitespace0()) }
+  let padded = fn(parser: Parser(_, a)) { then_skip(parser, whitespace0()) }
   let symbol = fn(s: String) { padded(string(s)) }
 
   let digits0 = many0(digit())
@@ -37,8 +38,8 @@ fn value_parser() -> Parser(Char, Json) {
   let digits1 = many1(digit())
 
   let whole =
-    alt(
-      to(just("0"), ["0"]),
+    or(
+      replace(token("0"), ["0"]),
       recognize(pair(
         one_of(["1", "2", "3", "4", "5", "6", "7", "8", "9"]),
         digits0,
@@ -47,22 +48,22 @@ fn value_parser() -> Parser(Char, Json) {
     |> map(string.concat)
 
   let frac =
-    just(".")
-    |> right(digits1)
+    token(".")
+    |> skip_then(digits1)
     |> map(string.concat)
 
   let exp =
-    alt(just("e"), just("E"))
-    |> pair(maybe(one_of(["+", "-"])))
+    or(token("e"), token("E"))
+    |> pair(optional(one_of(["+", "-"])))
     |> pair(digits1)
     |> recognize()
     |> map(string.concat)
 
   let num =
-    maybe(just("-"))
+    optional(token("-"))
     |> pair(whole)
-    |> pair(maybe(frac))
-    |> pair(maybe(exp))
+    |> pair(optional(frac))
+    |> pair(optional(exp))
     |> map(fn(p) {
       let #(#(#(neg, whole), fraction), ex) = p
       let str =
@@ -84,9 +85,12 @@ fn value_parser() -> Parser(Char, Json) {
     |> map(Num)
 
   let bool =
-    alt(to(string("true"), Boolean(True)), to(string("false"), Boolean(False)))
+    or(
+      replace(string("true"), Boolean(True)),
+      replace(string("false"), Boolean(False)),
+    )
 
-  let null = to(string("null"), Null)
+  let null = replace(string("null"), Null)
 
   let hex_digit =
     one_of([
@@ -98,18 +102,18 @@ fn value_parser() -> Parser(Char, Json) {
     recognize(seq([hex_digit, hex_digit, hex_digit, hex_digit]))
 
   let escape =
-    just("\\")
-    |> right(
+    token("\\")
+    |> skip_then(
       choice([
-        just("\\"),
-        just("/"),
-        just("\""),
-        to(just("b"), "\u{0008}"),
-        to(just("f"), "\u{000C}"),
-        to(just("n"), "\n"),
-        to(just("r"), "\r"),
-        to(just("t"), "\t"),
-        map(right(just("u"), unicode_escape_digits), fn(value) {
+        token("\\"),
+        token("/"),
+        token("\""),
+        replace(token("b"), "\u{0008}"),
+        replace(token("f"), "\u{000C}"),
+        replace(token("n"), "\n"),
+        replace(token("r"), "\r"),
+        replace(token("t"), "\t"),
+        map(skip_then(token("u"), unicode_escape_digits), fn(value) {
           let assert Ok(number) = int.base_parse(string.concat(value), 16)
           let assert Ok(codepoint) = string.utf_codepoint(number)
           string.from_utf_codepoints([codepoint])
@@ -119,10 +123,10 @@ fn value_parser() -> Parser(Char, Json) {
 
   let str =
     none_of(["\"", "\\"])
-    |> alt(escape)
+    |> or(escape)
     |> many0()
     |> map(string.concat)
-    |> between(just("\""), just("\""))
+    |> between(token("\""), token("\""))
 
   let value = lazy(value_parser)
 
@@ -133,7 +137,7 @@ fn value_parser() -> Parser(Char, Json) {
 
   let key_value =
     str
-    |> left(symbol(":"))
+    |> then_skip(symbol(":"))
     |> pair(value)
 
   let key_values =

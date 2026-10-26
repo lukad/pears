@@ -1,7 +1,7 @@
 import helpers.{should_parse}
 import pears.{type Parser}
-import pears/chars.{type Char, number}
-import pears/combinators.{alt, between, eof, just, lazy, left, map, sep_by0}
+import pears/chars.{type Char, natural}
+import pears/combinators.{between, eof, lazy, map, or, sep_by0, then_skip, token}
 
 pub type Tree(a) {
   Leaf(a)
@@ -10,17 +10,17 @@ pub type Tree(a) {
 
 fn tree_parser() -> Parser(Char, Tree(Int)) {
   let tree = lazy(tree_parser)
-  let leaf = map(number(), Leaf)
+  let leaf = map(natural(), Leaf)
   let node =
     tree
-    |> sep_by0(just(","))
-    |> between(just("["), just("]"))
+    |> sep_by0(token(","))
+    |> between(token("["), token("]"))
     |> map(Node)
-  alt(leaf, node)
+  or(leaf, node)
 }
 
 fn parser() -> Parser(Char, Tree(Int)) {
-  left(tree_parser(), eof())
+  then_skip(tree_parser(), eof())
 }
 
 pub fn parse_tree_test() {

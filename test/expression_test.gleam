@@ -4,7 +4,7 @@ import helpers.{should_fail_with, should_parse}
 import pears.{type Parser, UnexpectedEndOfInput}
 import pears/chars.{type Char}
 import pears/combinators.{
-  alt, between, chainl1, chainr1, eof, just, lazy, left, to,
+  between, chain_left, chain_right, eof, lazy, or, replace, then_skip, token,
 }
 
 fn power(base: Int, exponent: Int) -> Int {
@@ -19,31 +19,34 @@ fn power(base: Int, exponent: Int) -> Int {
 // factor     = atom ("^" factor)?
 // atom       = number | "(" expression ")"
 fn expression() -> Parser(Char, Int) {
-  let add = alt(to(just("+"), int.add), to(just("-"), int.subtract))
+  let add = or(replace(token("+"), int.add), replace(token("-"), int.subtract))
   let multiply =
-    alt(to(just("*"), int.multiply), to(just("/"), fn(a, b) { a / b }))
+    or(
+      replace(token("*"), int.multiply),
+      replace(token("/"), fn(a, b) { a / b }),
+    )
   let atom =
-    alt(chars.number(), between(lazy(expression), just("("), just(")")))
+    or(chars.natural(), between(lazy(expression), token("("), token(")")))
 
-  let factor = chainr1(atom, to(just("^"), power))
-  let term = chainl1(factor, multiply)
-  chainl1(term, add)
+  let factor = chain_right(atom, replace(token("^"), power))
+  let term = chain_left(factor, multiply)
+  chain_left(term, add)
 }
 
 fn parser() -> Parser(Char, Int) {
-  left(expression(), eof())
+  then_skip(expression(), eof())
 }
 
 pub fn chainl1_test() {
-  let minus = to(just("-"), int.subtract)
-  chainl1(chars.number(), minus)
+  let minus = replace(token("-"), int.subtract)
+  chain_left(chars.natural(), minus)
   |> should_parse("7", 7)
   |> should_parse("10-2-3", 5)
 }
 
 pub fn chainr1_test() {
-  let minus = to(just("-"), int.subtract)
-  chainr1(chars.number(), minus)
+  let minus = replace(token("-"), int.subtract)
+  chain_right(chars.natural(), minus)
   |> should_parse("7", 7)
   |> should_parse("10-2-3", 11)
   |> should_parse("10-2-3-4", 7)
