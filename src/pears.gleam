@@ -143,7 +143,8 @@
 ////
 //// ### More examples
 ////
-//// Please have a look at the tests for more complex examples, such as parsing JSON or Brainf*ck.
+//// Please have a look at the tests for more complex examples, such as parsing JSON or Brainf*ck,
+//// or a lexer followed by a parser over its tokens (`test/lexer_test.gleam`).
 
 import gleam/int
 import gleam/list
