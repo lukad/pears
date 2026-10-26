@@ -122,8 +122,8 @@
 //// ### Errors
 ////
 //// When a parser fails it returns a `ParseError` with the position of the failing token,
-//// what was expected there and what was found instead. `format_error` and
-//// `chars.format_error` turn it into a message:
+//// what was expected there and what was found instead, or a custom message from
+//// `fail` or `try_map`. `format_error` and `chars.format_error` turn it into a message:
 ////
 //// ```gleam
 //// let source = "a,b;c"
@@ -167,6 +167,8 @@ pub type Span {
 pub type ParseError(i) {
   UnexpectedEndOfInput(position: Int, expected: List(String))
   UnexpectedToken(position: Int, expected: List(String), found: i)
+  /// Created by `combinators.fail` and `combinators.try_map`.
+  Custom(position: Int, message: String)
 }
 
 /// The result of running a parser. `furthest_error` is an error the parser
@@ -255,7 +257,21 @@ pub fn merge_errors(a: ParseError(i), b: ParseError(i)) -> ParseError(i) {
     order.Gt -> a
     order.Lt -> b
     order.Eq ->
-      with_expected(b, list.unique(list.append(a.expected, b.expected)))
+      case a, b {
+        // a custom message is more specific than a list of expected tokens
+        Custom(..), _ -> a
+        _, Custom(..) -> b
+        _, _ ->
+          with_expected(b, list.unique(list.append(expected(a), expected(b))))
+      }
+  }
+}
+
+fn expected(error: ParseError(i)) -> List(String) {
+  case error {
+    UnexpectedEndOfInput(_, expected) -> expected
+    UnexpectedToken(_, expected, _) -> expected
+    Custom(..) -> []
   }
 }
 
@@ -269,6 +285,7 @@ pub fn with_expected(
       UnexpectedEndOfInput(position, expected)
     UnexpectedToken(position, _, found) ->
       UnexpectedToken(position, expected, found)
+    Custom(..) -> error
   }
 }
 
@@ -280,11 +297,16 @@ pub fn format_error(error: ParseError(i)) -> String {
 
 /// Formats a parse error without its position, e.g. `expected "," or "]", found "x"`.
 pub fn error_message(error: ParseError(i)) -> String {
-  let found = case error {
-    UnexpectedEndOfInput(_, _) -> "end of input"
-    UnexpectedToken(_, _, found) -> string.inspect(found)
+  case error {
+    UnexpectedEndOfInput(_, expected) -> describe(expected, "end of input")
+    UnexpectedToken(_, expected, found) ->
+      describe(expected, string.inspect(found))
+    Custom(_, message) -> message
   }
-  case error.expected {
+}
+
+fn describe(expected: List(String), found: String) -> String {
+  case expected {
     [] -> "unexpected " <> found
     expected ->
       "expected " <> join_alternatives(expected) <> ", found " <> found

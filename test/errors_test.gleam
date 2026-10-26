@@ -1,11 +1,11 @@
 import gleeunit/should
 import helpers.{should_fail_with}
-import pears.{UnexpectedEndOfInput, UnexpectedToken}
+import pears.{Custom, UnexpectedEndOfInput, UnexpectedToken}
 import pears/chars
 import pears/combinators.{
   alt, between, choice, eof, exactly, fail, hidden, just, labelled, left, many0,
   many_till, maybe, none_of, not_followed_by, pair, peek, right, satisfying,
-  sep_by0, seq, succeed, then,
+  sep_by0, seq, succeed, then, try_map,
 }
 
 pub fn just_test() {
@@ -94,6 +94,10 @@ pub fn format_error_test() {
   UnexpectedToken(0, [], "x")
   |> pears.format_error()
   |> should.equal("position 0: unexpected \"x\"")
+
+  Custom(3, "oops")
+  |> pears.format_error()
+  |> should.equal("position 3: oops")
 }
 
 pub fn line_column_test() {
@@ -162,11 +166,52 @@ pub fn then_test() {
 }
 
 pub fn fail_test() {
-  fail("digit")
-  |> should_fail_with("", UnexpectedEndOfInput(0, ["digit"]))
+  fail("oops")
+  |> should_fail_with("", Custom(0, "oops"))
 
-  then(maybe(just("-")), fn(_) { fail("digit") })
-  |> should_fail_with("x", UnexpectedToken(0, ["\"-\"", "digit"], "x"))
+  right(just("a"), fail("oops"))
+  |> should_fail_with("ab", Custom(1, "oops"))
+
+  // a custom error wins over expected tokens at the same position
+  then(maybe(just("-")), fn(_) { fail("oops") })
+  |> should_fail_with("x", Custom(0, "oops"))
+}
+
+pub fn custom_error_merging_test() {
+  alt(fail("oops"), just("a"))
+  |> should_fail_with("b", Custom(0, "oops"))
+
+  alt(just("a"), fail("oops"))
+  |> should_fail_with("b", Custom(0, "oops"))
+
+  // errors further into the input still win
+  alt(fail("oops"), chars.string("ab"))
+  |> should_fail_with("ac", UnexpectedToken(1, ["\"ab\""], "c"))
+
+  labelled(fail("oops"), "thing")
+  |> should_fail_with("a", Custom(0, "oops"))
+}
+
+pub fn try_map_test() {
+  let even =
+    try_map(chars.number(), fn(n) {
+      case n % 2 {
+        0 -> Ok(n)
+        _ -> Error("expected an even number")
+      }
+    })
+
+  right(just("x"), even)
+  |> should_fail_with("x13", Custom(1, "expected an even number"))
+
+  // errors recovered inside the mapped parser are dropped
+  try_map(many0(just("a")), fn(_) { Error("nope") })
+  |> should_fail_with("aab", Custom(0, "nope"))
+}
+
+pub fn chars_custom_errors_test() {
+  pears.parse_string_all("\"\\uD800\"", chars.string_literal())
+  |> should.equal(Error(Custom(2, "invalid code point")))
 }
 
 pub fn peek_test() {

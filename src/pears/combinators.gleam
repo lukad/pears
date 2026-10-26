@@ -3,7 +3,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import pears.{
-  type ParseError, type Parser, type Step, type StepResult, Span, Step,
+  type ParseError, type Parser, type Step, type StepResult, Custom, Span, Step,
   UnexpectedEndOfInput, UnexpectedToken, merge_errors, new_parser, ok, run,
   with_expected,
 }
@@ -95,15 +95,15 @@ pub fn succeed(value: a) -> Parser(i, a) {
   new_parser(fn(in: Input(i)) { ok(in, value) })
 }
 
-/// Fails at the current position, reporting `expected` as what was expected.
+/// Fails at the current position with `message`.
 ///
 /// ```gleam
-/// import pears.{UnexpectedToken}
+/// import pears.{Custom}
 ///
-/// assert pears.parse_string("a", fail("digit")) == Error(UnexpectedToken(0, ["digit"], "a"))
+/// assert pears.parse_string("a", fail("not supported")) == Error(Custom(0, "not supported"))
 /// ```
-pub fn fail(expected: String) -> Parser(i, a) {
-  new_parser(fn(in: Input(i)) { Error(error_at(in, [expected])) })
+pub fn fail(message: String) -> Parser(i, a) {
+  new_parser(fn(in: Input(i)) { Error(Custom(input.position(in), message)) })
 }
 
 /// Runs the parser and passes its result to `next`, which returns the parser to
@@ -128,6 +128,37 @@ pub fn then(parser: Parser(i, a), next: fn(a) -> Parser(i, b)) -> Parser(i, b) {
   new_parser(fn(in: Input(i)) {
     use parsed <- continue(run(parser, in))
     run(next(parsed.value), parsed.input)
+  })
+}
+
+/// Maps the result of a parser with a function that can fail. If it returns
+/// `Error(message)`, parsing fails with that message at the position where the
+/// parser started.
+///
+/// ```gleam
+/// import pears.{Custom}
+/// import pears/chars
+///
+/// let byte =
+///   try_map(chars.number(), fn(n) {
+///     case n < 256 {
+///       True -> Ok(n)
+///       False -> Error("number must be below 256")
+///     }
+///   })
+/// assert pears.parse_string_all("255", byte) == Ok(255)
+/// assert pears.parse_string_all("256", byte) == Error(Custom(0, "number must be below 256"))
+/// ```
+pub fn try_map(
+  parser: Parser(i, a),
+  fun: fn(a) -> Result(b, String),
+) -> Parser(i, b) {
+  new_parser(fn(in: Input(i)) {
+    use step <- result.try(run(parser, in))
+    case fun(step.value) {
+      Ok(value) -> Ok(Step(step.input, value, step.furthest_error))
+      Error(message) -> Error(Custom(input.position(in), message))
+    }
   })
 }
 

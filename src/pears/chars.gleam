@@ -9,9 +9,9 @@ import pears.{
   UnexpectedToken, new_parser, ok,
 }
 import pears/combinators.{
-  alt, between, choice, exactly, fail, hidden, just, labelled, left, many0,
-  many1, map, maybe, none_of, one_of, pair, recognize, right, satisfying,
-  succeed, then, to,
+  alt, between, choice, exactly, hidden, just, labelled, left, many0, many1, map,
+  maybe, none_of, one_of, pair, recognize, right, satisfying, succeed, then, to,
+  try_map,
 }
 import pears/input.{type Input}
 
@@ -173,7 +173,7 @@ pub fn integer() -> Parser(Char, Int) {
 }
 
 /// Parses a number with a fractional part and an optional exponent, like
-/// `-1.5` or `2.0e10`. Fails if the number is out of range on Erlang.
+/// `-1.5` or `2.0e10`. On Erlang, numbers out of range fail with a custom error.
 ///
 /// ```gleam
 /// import pears
@@ -184,19 +184,15 @@ pub fn float() -> Parser(Char, Float) {
   let digits = many1(digit())
   let exponent =
     pair(one_of(["e", "E"]), pair(maybe(one_of(["+", "-"])), digits))
-  let parser = {
-    use chars <- then(
-      recognize(pair(
-        pair(maybe(char("-")), digits),
-        pair(pair(char("."), digits), maybe(exponent)),
-      )),
-    )
-    case float.parse(string.concat(chars)) {
-      Ok(value) -> succeed(value)
-      Error(_) -> fail("float in range")
-    }
-  }
-  labelled(parser, "float")
+  recognize(pair(
+    pair(maybe(char("-")), digits),
+    pair(pair(char("."), digits), maybe(exponent)),
+  ))
+  |> try_map(fn(chars) {
+    float.parse(string.concat(chars))
+    |> result.replace_error("float out of range")
+  })
+  |> labelled("float")
 }
 
 /// Parses a double-quoted string with JSON-style escapes (`\"`, `\\`, `\/`,
@@ -208,16 +204,14 @@ pub fn float() -> Parser(Char, Float) {
 /// assert pears.parse_string_all("\"a\\nb\"", string_literal()) == Ok("a\nb")
 /// ```
 pub fn string_literal() -> Parser(Char, String) {
-  let unicode = {
-    use digits <- then(right(char("u"), exactly(hex_digit(), 4)))
-    let codepoint =
+  let unicode =
+    right(char("u"), exactly(hex_digit(), 4))
+    |> try_map(fn(digits) {
       int.base_parse(string.concat(digits), 16)
       |> result.try(string.utf_codepoint)
-    case codepoint {
-      Ok(codepoint) -> succeed(string.from_utf_codepoints([codepoint]))
-      Error(_) -> fail("valid code point")
-    }
-  }
+      |> result.map(fn(codepoint) { string.from_utf_codepoints([codepoint]) })
+      |> result.replace_error("invalid code point")
+    })
   let escape =
     right(
       char("\\"),
