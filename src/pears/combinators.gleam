@@ -3,8 +3,9 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import pears.{
-  type ParseError, type ParseResult, type Parsed, type Parser, Parsed, Span,
-  UnexpectedEndOfInput, UnexpectedToken, merge_errors, ok, with_expected,
+  type ParseError, type Parser, type Step, type StepResult, Span, Step,
+  UnexpectedEndOfInput, UnexpectedToken, merge_errors, new_parser, ok, run,
+  with_expected,
 }
 import pears/input.{type Input}
 
@@ -39,14 +40,14 @@ fn relevant(
 
 /// Adds a recovered error to a successful result. `parsed.furthest_error` is
 /// never before its position, so only `error` needs checking.
-fn recover(parsed: Parsed(i, a), error: Option(ParseError(i))) -> Parsed(i, a) {
+fn recover(parsed: Step(i, a), error: Option(ParseError(i))) -> Step(i, a) {
   case error {
     None -> parsed
     Some(error) ->
       case error.position < input.position(parsed.input) {
         True -> parsed
         False ->
-          Parsed(
+          Step(
             ..parsed,
             furthest_error: merge_optional_errors(
               Some(error),
@@ -69,13 +70,13 @@ fn add_recovered(
 
 /// Like `result.try`, but carries over the recovered error of `result`.
 fn continue(
-  result: ParseResult(i, a),
-  next: fn(Parsed(i, a)) -> ParseResult(i, b),
-) -> ParseResult(i, b) {
+  result: StepResult(i, a),
+  next: fn(Step(i, a)) -> StepResult(i, b),
+) -> StepResult(i, b) {
   case result {
     Error(error) -> Error(error)
-    Ok(Parsed(furthest_error: None, ..) as parsed) -> next(parsed)
-    Ok(Parsed(furthest_error: Some(recovered), ..) as parsed) ->
+    Ok(Step(furthest_error: None, ..) as parsed) -> next(parsed)
+    Ok(Step(furthest_error: Some(recovered), ..) as parsed) ->
       case next(parsed) {
         Ok(next_parsed) -> Ok(recover(next_parsed, Some(recovered)))
         Error(error) -> Error(merge_errors(recovered, error))
@@ -91,7 +92,7 @@ fn continue(
 /// assert pears.parse_string_all("", succeed(1)) == Ok(1)
 /// ```
 pub fn succeed(value: a) -> Parser(i, a) {
-  fn(in: Input(i)) { ok(in, value) }
+  new_parser(fn(in: Input(i)) { ok(in, value) })
 }
 
 /// Fails at the current position, reporting `expected` as what was expected.
@@ -102,7 +103,7 @@ pub fn succeed(value: a) -> Parser(i, a) {
 /// assert pears.parse_string("a", fail("digit")) == Error(UnexpectedToken(0, ["digit"], "a"))
 /// ```
 pub fn fail(expected: String) -> Parser(i, a) {
-  fn(in: Input(i)) { Error(error_at(in, [expected])) }
+  new_parser(fn(in: Input(i)) { Error(error_at(in, [expected])) })
 }
 
 /// Runs the parser and passes its result to `next`, which returns the parser to
@@ -124,24 +125,24 @@ pub fn fail(expected: String) -> Parser(i, a) {
 /// assert pears.parse_string_all("-42", integer) == Ok(-42)
 /// ```
 pub fn then(parser: Parser(i, a), next: fn(a) -> Parser(i, b)) -> Parser(i, b) {
-  fn(in: Input(i)) {
-    use parsed <- continue(parser(in))
-    next(parsed.value)(parsed.input)
-  }
+  new_parser(fn(in: Input(i)) {
+    use parsed <- continue(run(parser, in))
+    run(next(parsed.value), parsed.input)
+  })
 }
 
 /// Maps the result of a parser to a new value using a mapper function.
 pub fn map(p: Parser(i, a), fun: fn(a) -> b) -> Parser(i, b) {
-  fn(input: Input(i)) {
-    p(input)
+  new_parser(fn(input: Input(i)) {
+    run(p, input)
     |> result.map(fn(parsed) {
-      Parsed(
+      Step(
         input: parsed.input,
         value: fun(parsed.value),
         furthest_error: parsed.furthest_error,
       )
     })
-  }
+  })
 }
 
 /// Maps the error of a parser to a new error using a mapper function.
@@ -149,28 +150,25 @@ pub fn map_error(
   p: Parser(i, a),
   fun: fn(ParseError(i)) -> ParseError(i),
 ) -> Parser(i, a) {
-  fn(input: Input(i)) {
-    p(input)
+  new_parser(fn(input: Input(i)) {
+    run(p, input)
     |> result.map_error(fun)
-  }
+  })
 }
 
 /// Reports `label` as expected when the parser fails without consuming input.
 pub fn labelled(parser: Parser(i, a), label: String) -> Parser(i, a) {
-  fn(in: Input(i)) {
+  new_parser(fn(in: Input(i)) {
     let position = input.position(in)
-    case parser(in) {
+    case run(parser, in) {
       Error(error) if error.position == position ->
         Error(with_expected(error, [label]))
-      Ok(Parsed(furthest_error: Some(error), ..) as parsed)
+      Ok(Step(furthest_error: Some(error), ..) as parsed)
         if error.position == position
-      ->
-        Ok(
-          Parsed(..parsed, furthest_error: Some(with_expected(error, [label]))),
-        )
+      -> Ok(Step(..parsed, furthest_error: Some(with_expected(error, [label]))))
       result -> result
     }
-  }
+  })
 }
 
 /// Runs the parser without consuming any input.
@@ -181,12 +179,12 @@ pub fn labelled(parser: Parser(i, a), label: String) -> Parser(i, a) {
 /// assert pears.parse_string_all("a", pair(peek(just("a")), just("a"))) == Ok(#("a", "a"))
 /// ```
 pub fn peek(parser: Parser(i, a)) -> Parser(i, a) {
-  fn(in: Input(i)) {
-    case parser(in) {
+  new_parser(fn(in: Input(i)) {
+    case run(parser, in) {
       Ok(parsed) -> ok(in, parsed.value)
       Error(_) as error -> error
     }
-  }
+  })
 }
 
 /// Succeeds without consuming any input if the parser fails, and fails if it succeeds.
@@ -201,25 +199,25 @@ pub fn peek(parser: Parser(i, a)) -> Parser(i, a) {
 /// let assert Error(_) = pears.parse_string("letter", keyword)
 /// ```
 pub fn not_followed_by(parser: Parser(i, a)) -> Parser(i, Nil) {
-  fn(in: Input(i)) {
-    case parser(in) {
+  new_parser(fn(in: Input(i)) {
+    case run(parser, in) {
       Ok(_) -> Error(error_at(in, []))
       Error(_) -> ok(in, Nil)
     }
-  }
+  })
 }
 
 /// Leaves the parser out of error messages, e.g. for optional whitespace.
 pub fn hidden(parser: Parser(i, a)) -> Parser(i, a) {
-  fn(in: Input(i)) {
+  new_parser(fn(in: Input(i)) {
     let position = input.position(in)
-    case parser(in) {
-      Ok(parsed) -> Ok(Parsed(..parsed, furthest_error: None))
+    case run(parser, in) {
+      Ok(parsed) -> Ok(Step(..parsed, furthest_error: None))
       Error(error) if error.position == position ->
         Error(with_expected(error, []))
       Error(error) -> Error(error)
     }
-  }
+  })
 }
 
 /// Maps the result of a parser to a constant value.
@@ -229,11 +227,11 @@ pub fn to(parser: Parser(i, a), value: b) -> Parser(i, b) {
 
 /// Tries to apply the first parser, if it fails it applies the second parser.
 pub fn alt(parser_1: Parser(i, a), parser_2: Parser(i, a)) -> Parser(i, a) {
-  fn(input: Input(i)) {
-    case parser_1(input) {
+  new_parser(fn(input: Input(i)) {
+    case run(parser_1, input) {
       Ok(_) as result -> result
       Error(error_1) ->
-        case parser_2(input) {
+        case run(parser_2, input) {
           Ok(parsed) as result ->
             case error_1.position < input.position(parsed.input) {
               True -> result
@@ -242,28 +240,28 @@ pub fn alt(parser_1: Parser(i, a), parser_2: Parser(i, a)) -> Parser(i, a) {
           Error(error_2) -> Error(merge_errors(error_1, error_2))
         }
     }
-  }
+  })
 }
 
 /// Consumes any single item from the input except for the end of file.
 pub fn any() -> Parser(i, i) {
-  fn(in: Input(i)) {
+  new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
       [] -> Error(UnexpectedEndOfInput(input.position(in), ["any token"]))
       [token, ..] -> ok(input.next(in), token)
     }
-  }
+  })
 }
 
 /// Consumes the end of the input and returns a Nil value. Fails if there is any input left.
 pub fn eof() -> Parser(i, Nil) {
-  fn(in: Input(i)) {
+  new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
       [] -> ok(in, Nil)
       [token, ..] ->
         Error(UnexpectedToken(input.position(in), ["end of input"], token))
     }
-  }
+  })
 }
 
 /// A predicate function that returns a boolean value for a given input item of type `i`.
@@ -272,7 +270,7 @@ pub type Predicate(i) =
 
 /// Consumes a single item from the input that satisfies the given predicate function.
 pub fn satisfying(f: Predicate(i)) -> Parser(i, i) {
-  fn(in: Input(i)) {
+  new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
       [] -> Error(UnexpectedEndOfInput(input.position(in), []))
       [token, ..] ->
@@ -281,12 +279,12 @@ pub fn satisfying(f: Predicate(i)) -> Parser(i, i) {
           False -> Error(UnexpectedToken(input.position(in), [], token))
         }
     }
-  }
+  })
 }
 
 /// Consumes a single item from the input that is equal to the given item.
 pub fn just(item: i) -> Parser(i, i) {
-  fn(in: Input(i)) {
+  new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
       [] ->
         Error(UnexpectedEndOfInput(input.position(in), [string.inspect(item)]))
@@ -294,7 +292,7 @@ pub fn just(item: i) -> Parser(i, i) {
       [token, ..] ->
         Error(UnexpectedToken(input.position(in), [string.inspect(item)], token))
     }
-  }
+  })
 }
 
 /// Applies both parsers and returns a tuple of the results.
@@ -302,27 +300,27 @@ pub fn pair(
   parser_1 p1: Parser(i, a),
   parser_2 p2: Parser(i, b),
 ) -> Parser(i, #(a, b)) {
-  fn(in: Input(i)) {
-    use parsed_1 <- continue(p1(in))
-    use parsed_2 <- continue(p2(parsed_1.input))
+  new_parser(fn(in: Input(i)) {
+    use parsed_1 <- continue(run(p1, in))
+    use parsed_2 <- continue(run(p2, parsed_1.input))
     ok(parsed_2.input, #(parsed_1.value, parsed_2.value))
-  }
+  })
 }
 
 /// Applies the given parsers in sequence and returns a list of the results
 pub fn seq(parsers: List(Parser(i, a))) -> Parser(i, List(a)) {
-  fn(input: Input(i)) { do_sequence(parsers, input, []) }
+  new_parser(fn(input: Input(i)) { do_sequence(parsers, input, []) })
 }
 
 fn do_sequence(
   parsers: List(Parser(i, a)),
   input: Input(i),
   acc: List(a),
-) -> ParseResult(i, List(a)) {
+) -> StepResult(i, List(a)) {
   case parsers {
     [] -> ok(input, list.reverse(acc))
     [parser, ..rest] -> {
-      use parsed <- continue(parser(input))
+      use parsed <- continue(run(parser, input))
       do_sequence(rest, parsed.input, [parsed.value, ..acc])
     }
   }
@@ -333,11 +331,11 @@ pub fn left(
   parser_1 p1: Parser(i, a),
   parser_2 p2: Parser(i, b),
 ) -> Parser(i, a) {
-  fn(in: Input(i)) {
-    use parsed_1 <- continue(p1(in))
-    use parsed_2 <- continue(p2(parsed_1.input))
+  new_parser(fn(in: Input(i)) {
+    use parsed_1 <- continue(run(p1, in))
+    use parsed_2 <- continue(run(p2, parsed_1.input))
     ok(parsed_2.input, parsed_1.value)
-  }
+  })
 }
 
 /// Applies the first parser and then the second parser, returning the result of the second parser.
@@ -345,18 +343,18 @@ pub fn right(
   parser_1 p1: Parser(i, a),
   parser_2 p2: Parser(i, b),
 ) -> Parser(i, b) {
-  fn(in: Input(i)) {
-    use parsed_1 <- continue(p1(in))
-    use parsed_2 <- continue(p2(parsed_1.input))
+  new_parser(fn(in: Input(i)) {
+    use parsed_1 <- continue(run(p1, in))
+    use parsed_2 <- continue(run(p2, parsed_1.input))
     ok(parsed_2.input, parsed_2.value)
-  }
+  })
 }
 
 /// Applies the given parser zero or more times.
 ///
 /// Stops as soon as the parser fails or succeeds without consuming any input.
 pub fn many0(parser: Parser(i, a)) -> Parser(i, List(a)) {
-  fn(in: Input(i)) { do_many(parser, in, [], None) }
+  new_parser(fn(in: Input(i)) { do_many(parser, in, [], None) })
 }
 
 fn do_many(
@@ -364,8 +362,8 @@ fn do_many(
   in: Input(i),
   acc: List(a),
   recovered: Option(ParseError(i)),
-) -> ParseResult(i, List(a)) {
-  case parser(in) {
+) -> StepResult(i, List(a)) {
+  case run(parser, in) {
     Ok(parsed) -> {
       let recovered = merge_optional_errors(recovered, parsed.furthest_error)
       let position = input.position(parsed.input)
@@ -377,23 +375,23 @@ fn do_many(
             [parsed.value, ..acc],
             relevant(recovered, position),
           )
-        False -> Ok(Parsed(in, list.reverse(acc), recovered))
+        False -> Ok(Step(in, list.reverse(acc), recovered))
       }
     }
     Error(error) -> {
       let recovered = merge_optional_errors(recovered, Some(error))
-      Ok(Parsed(in, list.reverse(acc), recovered))
+      Ok(Step(in, list.reverse(acc), recovered))
     }
   }
 }
 
 /// Applies the given parser one or more times.
 pub fn many1(parser: Parser(i, a)) -> Parser(i, List(a)) {
-  fn(in: Input(i)) {
-    use parsed <- continue(parser(in))
-    use rest <- continue(many0(parser)(parsed.input))
+  new_parser(fn(in: Input(i)) {
+    use parsed <- continue(run(parser, in))
+    use rest <- continue(run(many0(parser), parsed.input))
     ok(rest.input, [parsed.value, ..rest.value])
-  }
+  })
 }
 
 /// Applies the given parser exactly `n` times.
@@ -405,7 +403,7 @@ pub fn many1(parser: Parser(i, a)) -> Parser(i, List(a)) {
 /// let assert Error(_) = pears.parse_string_all("aa", exactly(just("a"), 3))
 /// ```
 pub fn exactly(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
-  fn(in: Input(i)) { do_repeat(parser, in, [], 0, n, Some(n), None) }
+  new_parser(fn(in: Input(i)) { do_repeat(parser, in, [], 0, n, Some(n), None) })
 }
 
 /// Applies the given parser `n` or more times.
@@ -417,7 +415,7 @@ pub fn exactly(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
 /// let assert Error(_) = pears.parse_string_all("a", at_least(just("a"), 2))
 /// ```
 pub fn at_least(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
-  fn(in: Input(i)) { do_repeat(parser, in, [], 0, n, None, None) }
+  new_parser(fn(in: Input(i)) { do_repeat(parser, in, [], 0, n, None, None) })
 }
 
 /// Applies the given parser up to `n` times.
@@ -429,7 +427,7 @@ pub fn at_least(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
 /// assert parsed.value == ["a", "a"]
 /// ```
 pub fn at_most(parser: Parser(i, a), n: Int) -> Parser(i, List(a)) {
-  fn(in: Input(i)) { do_repeat(parser, in, [], 0, 0, Some(n), None) }
+  new_parser(fn(in: Input(i)) { do_repeat(parser, in, [], 0, 0, Some(n), None) })
 }
 
 /// Applies the parser at least `min` and at most `max` times. Like `many0`, it
@@ -442,17 +440,17 @@ fn do_repeat(
   min: Int,
   max: Option(Int),
   recovered: Option(ParseError(i)),
-) -> ParseResult(i, List(a)) {
+) -> StepResult(i, List(a)) {
   case max {
-    Some(max) if count >= max -> Ok(Parsed(in, list.reverse(acc), recovered))
+    Some(max) if count >= max -> Ok(Step(in, list.reverse(acc), recovered))
     _ ->
-      case parser(in) {
+      case run(parser, in) {
         Ok(parsed) -> {
           let recovered =
             merge_optional_errors(recovered, parsed.furthest_error)
           let position = input.position(parsed.input)
           case position > input.position(in), count >= min {
-            False, True -> Ok(Parsed(in, list.reverse(acc), recovered))
+            False, True -> Ok(Step(in, list.reverse(acc), recovered))
             _, _ ->
               do_repeat(
                 parser,
@@ -468,7 +466,7 @@ fn do_repeat(
         Error(error) ->
           case count >= min {
             True ->
-              Ok(Parsed(
+              Ok(Step(
                 in,
                 list.reverse(acc),
                 merge_optional_errors(recovered, Some(error)),
@@ -493,7 +491,7 @@ pub fn many_till(
   parser: Parser(i, a),
   end: Parser(i, b),
 ) -> Parser(i, List(a)) {
-  fn(in: Input(i)) { do_many_till(parser, end, in, [], None) }
+  new_parser(fn(in: Input(i)) { do_many_till(parser, end, in, [], None) })
 }
 
 fn do_many_till(
@@ -502,16 +500,16 @@ fn do_many_till(
   in: Input(i),
   acc: List(a),
   recovered: Option(ParseError(i)),
-) -> ParseResult(i, List(a)) {
-  case end(in) {
+) -> StepResult(i, List(a)) {
+  case run(end, in) {
     Ok(parsed_end) ->
       Ok(recover(
-        Parsed(parsed_end.input, list.reverse(acc), parsed_end.furthest_error),
+        Step(parsed_end.input, list.reverse(acc), parsed_end.furthest_error),
         recovered,
       ))
     Error(end_error) -> {
       let recovered = merge_optional_errors(recovered, Some(end_error))
-      case parser(in) {
+      case run(parser, in) {
         Ok(parsed) -> {
           let position = input.position(parsed.input)
           case position > input.position(in) {
@@ -559,7 +557,7 @@ fn do_many_till(
 /// }
 /// ```
 pub fn lazy(f: fn() -> Parser(i, a)) -> Parser(i, a) {
-  fn(input) { f()(input) }
+  new_parser(fn(input) { run(f(), input) })
 }
 
 /// Consumes an item that is included in the given list.
@@ -589,19 +587,19 @@ pub fn between(
 /// Tries to apply the given parsers in order and returns the result of the first one that succeeds.
 /// If all fail, returns the error that got furthest.
 pub fn choice(parsers: List(Parser(i, a))) -> Parser(i, a) {
-  fn(in: Input(i)) { do_choice(parsers, in, None) }
+  new_parser(fn(in: Input(i)) { do_choice(parsers, in, None) })
 }
 
 fn do_choice(
   parsers: List(Parser(i, a)),
   in: Input(i),
   error: Option(ParseError(i)),
-) -> ParseResult(i, a) {
+) -> StepResult(i, a) {
   case parsers, error {
     [], Some(error) -> Error(error)
     [], None -> Error(error_at(in, []))
     [parser, ..rest], _ ->
-      case parser(in) {
+      case run(parser, in) {
         Ok(parsed) as result ->
           case error {
             Some(error) ->
@@ -677,16 +675,16 @@ pub fn sep_by0(
   parser: Parser(i, a),
   separator: Parser(i, b),
 ) -> Parser(i, List(a)) {
-  fn(in: Input(i)) {
-    case parser(in) {
-      Error(error) -> Ok(Parsed(in, [], Some(error)))
+  new_parser(fn(in: Input(i)) {
+    case run(parser, in) {
+      Error(error) -> Ok(Step(in, [], Some(error)))
       result -> {
         use parsed <- continue(result)
-        use rest <- continue(many0(right(separator, parser))(parsed.input))
+        use rest <- continue(run(many0(right(separator, parser)), parsed.input))
         ok(rest.input, [parsed.value, ..rest.value])
       }
     }
-  }
+  })
 }
 
 /// Parses one or more occurrences of the given parser separated by the given separator.
@@ -694,14 +692,11 @@ pub fn sep_by1(
   parser: Parser(i, a),
   separator: Parser(i, b),
 ) -> Parser(i, List(a)) {
-  fn(input: Input(i)) {
-    use parsed <- continue(parser(input))
-    use rest <- continue(many0(
-      separator
-      |> right(parser),
-    )(parsed.input))
+  new_parser(fn(input: Input(i)) {
+    use parsed <- continue(run(parser, input))
+    use rest <- continue(run(many0(right(separator, parser)), parsed.input))
     ok(rest.input, [parsed.value, ..rest.value])
-  }
+  })
 }
 
 /// Like `sep_by0`, but allows a trailing separator.
@@ -737,13 +732,13 @@ pub fn sep_end_by1(
 /// Applies the given parser and wraps the result in an `Option`,
 /// returning `None` if the parser fails instead of an error.
 pub fn maybe(parser: Parser(i, a)) -> Parser(i, Option(a)) {
-  fn(in: Input(i)) {
-    case parser(in) {
+  new_parser(fn(in: Input(i)) {
+    case run(parser, in) {
       Ok(parsed) ->
-        Ok(Parsed(parsed.input, Some(parsed.value), parsed.furthest_error))
-      Error(error) -> Ok(Parsed(in, None, Some(error)))
+        Ok(Step(parsed.input, Some(parsed.value), parsed.furthest_error))
+      Error(error) -> Ok(Step(in, None, Some(error)))
     }
-  }
+  })
 }
 
 /// Maps a parser that returns an `Option` to a parser that returns a value or a default value.
@@ -767,23 +762,23 @@ pub fn unwrap(parser: Parser(i, Option(a)), default: a) -> Parser(i, a) {
 /// assert pears.parse_string_all("let x", parser) == Ok(#("x", Span(4, 5)))
 /// ```
 pub fn with_span(parser: Parser(i, a)) -> Parser(i, #(a, pears.Span)) {
-  fn(in: Input(i)) {
+  new_parser(fn(in: Input(i)) {
     let start = input.position(in)
-    use parsed <- result.map(parser(in))
+    use parsed <- result.map(run(parser, in))
     let span = Span(start, input.position(parsed.input))
-    Parsed(parsed.input, #(parsed.value, span), parsed.furthest_error)
-  }
+    Step(parsed.input, #(parsed.value, span), parsed.furthest_error)
+  })
 }
 
 /// Creates a parser that returns the consumed tokens instead of its parsed value.
 pub fn recognize(parser: Parser(i, a)) -> Parser(i, List(i)) {
-  fn(in: Input(i)) {
-    use parsed <- result.try(parser(in))
+  new_parser(fn(in: Input(i)) {
+    use parsed <- result.try(run(parser, in))
     let consumed =
       list.take(
         input.tokens(in),
         input.position(parsed.input) - input.position(in),
       )
-    Ok(Parsed(parsed.input, consumed, parsed.furthest_error))
-  }
+    Ok(Step(parsed.input, consumed, parsed.furthest_error))
+  })
 }

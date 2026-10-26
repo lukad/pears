@@ -17,15 +17,6 @@
 ////
 //// It returns a `Result` with a `Parsed` record that holds the parsed value and the remaining input.
 ////
-//// Under the hood all `parse_string` does is convert the input string into a list of graphemes and then
-//// call the given parser, which is just a function, passing the input to it:
-////
-//// ```gleam
-//// let input = input.new(string.to_graphemes("abc"))
-//// let assert Ok(parsed) = just("a")(input)
-//// assert parsed.value == "a"
-//// ```
-////
 //// To parse the whole input and get just the value, use `parse_string_all`.
 //// It fails if any input is left over:
 ////
@@ -153,12 +144,17 @@ import gleam/order
 import gleam/string
 import pears/input.{type Input}
 
-/// Returned by a parser when it is successful. It contains the remaining input and the parsed value.
-///
-/// `furthest_error` is an error the parser recovered from, e.g. where `many0`
-/// stopped. It gets merged into later errors to make their messages more complete.
+/// A parser that consumes tokens of type `i` and produces a value of type `a`.
+/// Parsers are built with the functions in `pears/combinators` and `pears/chars`
+/// and run with `parse`, `parse_all`, `parse_string` or `parse_string_all`.
+pub opaque type Parser(i, a) {
+  Parser(run: fn(Input(i)) -> StepResult(i, a))
+}
+
+/// Returned by `parse` and `parse_string` when parsing succeeds. It contains
+/// the remaining input and the parsed value.
 pub type Parsed(i, a) {
-  Parsed(input: Input(i), value: a, furthest_error: Option(ParseError(i)))
+  Parsed(input: Input(i), value: a)
 }
 
 /// The tokens from `start` up to, but not including, `end`.
@@ -173,22 +169,49 @@ pub type ParseError(i) {
   UnexpectedToken(position: Int, expected: List(String), found: i)
 }
 
-/// The result of a parser. It is either a `Parsed` or a `ParseError`.
-pub type ParseResult(i, a) =
-  Result(Parsed(i, a), ParseError(i))
+/// The result of running a parser. `furthest_error` is an error the parser
+/// recovered from, e.g. where `many0` stopped. It gets merged into later
+/// errors to make their messages more complete.
+@internal
+pub type Step(i, a) {
+  Step(input: Input(i), value: a, furthest_error: Option(ParseError(i)))
+}
 
-/// The generic parser type. It's an alias for a function that takes an `Input(i)` and returns a `ParseResult(i, a)`.
-pub type Parser(i, a) =
-  fn(Input(i)) -> ParseResult(i, a)
+@internal
+pub type StepResult(i, a) =
+  Result(Step(i, a), ParseError(i))
+
+@internal
+pub fn new_parser(run: fn(Input(i)) -> StepResult(i, a)) -> Parser(i, a) {
+  Parser(run)
+}
+
+@internal
+pub fn run(parser: Parser(i, a), input: Input(i)) -> StepResult(i, a) {
+  parser.run(input)
+}
+
+@internal
+pub fn ok(input: Input(i), value: a) -> StepResult(i, a) {
+  Ok(Step(input, value, None))
+}
 
 /// Runs a parser on a list of tokens. The parser doesn't have to consume all of them.
-pub fn parse(i: List(i), p: Parser(i, a)) -> ParseResult(i, a) {
-  input.new(i)
-  |> p()
+pub fn parse(
+  i: List(i),
+  p: Parser(i, a),
+) -> Result(Parsed(i, a), ParseError(i)) {
+  case p.run(input.new(i)) {
+    Ok(step) -> Ok(Parsed(step.input, step.value))
+    Error(error) -> Error(error)
+  }
 }
 
 /// Runs a parser on the graphemes of a string. The parser doesn't have to consume all of them.
-pub fn parse_string(i: String, p: Parser(String, a)) -> ParseResult(String, a) {
+pub fn parse_string(
+  i: String,
+  p: Parser(String, a),
+) -> Result(Parsed(String, a), ParseError(String)) {
   i
   |> string.to_graphemes()
   |> parse(p)
@@ -197,12 +220,12 @@ pub fn parse_string(i: String, p: Parser(String, a)) -> ParseResult(String, a) {
 /// Runs a parser on a list of tokens and returns the parsed value.
 /// Fails if any tokens are left over.
 pub fn parse_all(i: List(i), p: Parser(i, a)) -> Result(a, ParseError(i)) {
-  case parse(i, p) {
+  case p.run(input.new(i)) {
     Error(error) -> Error(error)
-    Ok(Parsed(rest, value, furthest_error)) ->
-      case input.tokens(rest), furthest_error {
-        [], _ -> Ok(value)
-        [token, ..], _ -> {
+    Ok(Step(rest, value, furthest_error)) ->
+      case input.tokens(rest) {
+        [] -> Ok(value)
+        [token, ..] -> {
           let error =
             UnexpectedToken(input.position(rest), ["end of input"], token)
           case furthest_error {
@@ -223,11 +246,6 @@ pub fn parse_string_all(
   i
   |> string.to_graphemes()
   |> parse_all(p)
-}
-
-/// Creates a successful parse result.
-pub fn ok(input: Input(i), value: a) -> ParseResult(i, a) {
-  Ok(Parsed(input, value, None))
 }
 
 /// Keeps the error that got furthest, combining expectations at the same position.

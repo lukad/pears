@@ -5,8 +5,8 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 import pears.{
-  type ParseError, type ParseResult, type Parser, UnexpectedEndOfInput,
-  UnexpectedToken, ok,
+  type ParseError, type Parser, type StepResult, UnexpectedEndOfInput,
+  UnexpectedToken, new_parser, ok,
 }
 import pears/combinators.{
   alt, between, choice, exactly, fail, hidden, just, labelled, left, many0,
@@ -58,14 +58,14 @@ pub fn char(c: Char) -> Parser(Char, Char) {
 /// Parses a given string. Errors point at the first character that doesn't match.
 pub fn string(str: String) -> Parser(Char, String) {
   let chars = string.to_graphemes(str)
-  fn(in: Input(Char)) { do_string(in, chars, str) }
+  new_parser(fn(in: Input(Char)) { do_string(in, chars, str) })
 }
 
 fn do_string(
   in: Input(Char),
   chars: List(Char),
   str: String,
-) -> ParseResult(Char, String) {
+) -> StepResult(Char, String) {
   case chars, input.tokens(in) {
     [], _ -> ok(in, str)
     [char, ..rest], [token, ..] if char == token ->
@@ -86,7 +86,7 @@ fn do_string(
 /// ```
 pub fn case_insensitive(str: String) -> Parser(Char, String) {
   let chars = string.to_graphemes(string.lowercase(str))
-  fn(in: Input(Char)) { do_case_insensitive(in, chars, str, []) }
+  new_parser(fn(in: Input(Char)) { do_case_insensitive(in, chars, str, []) })
 }
 
 fn do_case_insensitive(
@@ -94,7 +94,7 @@ fn do_case_insensitive(
   chars: List(Char),
   str: String,
   matched: List(Char),
-) -> ParseResult(Char, String) {
+) -> StepResult(Char, String) {
   case chars, input.tokens(in) {
     [], _ -> ok(in, matched |> list.reverse |> string.concat)
     [char, ..rest], [token, ..] ->

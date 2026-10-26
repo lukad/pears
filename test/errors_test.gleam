@@ -1,4 +1,3 @@
-import gleam/option.{Some}
 import gleeunit/should
 import helpers.{should_fail_with}
 import pears.{UnexpectedEndOfInput, UnexpectedToken}
@@ -152,12 +151,6 @@ pub fn hidden_test() {
 pub fn labelled_relabels_recovered_error_test() {
   left(labelled(maybe(just("-")), "sign"), just("1"))
   |> should_fail_with("x", UnexpectedToken(0, ["sign", "\"1\""], "x"))
-}
-
-pub fn successful_parse_keeps_recovered_error_test() {
-  let assert Ok(parsed) = pears.parse_string("aab", many0(just("a")))
-  parsed.furthest_error
-  |> should.equal(Some(UnexpectedToken(2, ["\"a\""], "b")))
 }
 
 pub fn then_test() {
