@@ -31,7 +31,7 @@ pub fn main() {
       parser_bench("many0(token)", many0(token("a")), fn(size) {
         string.repeat("a", size)
       }),
-      parser_bench("sep_by0(number)", sep_by0(natural(), token(",")), fn(size) {
+      parser_bench("sep_by0(natural)", sep_by0(natural(), token(",")), fn(size) {
         list.repeat("12345", size / 6)
         |> string.join(",")
       }),

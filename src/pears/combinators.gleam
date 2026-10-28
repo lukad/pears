@@ -553,6 +553,10 @@ fn do_many_till(
 
 /// Lazily applies the given parser allowing for recursive parsers.
 ///
+/// `f` is called every time the parser runs, so keep it cheap. Every level of
+/// nesting in the input also adds to the call stack: on JavaScript, input nested
+/// more than a few hundred levels deep can overflow it.
+///
 /// ## Examples
 ///
 /// Parsing a recursive list of chars:

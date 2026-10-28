@@ -1,9 +1,11 @@
+import gleam/int
+import gleam/result
 import gleeunit/should
 import helpers.{should_fail_with, should_not_parse, should_parse}
-import pears.{UnexpectedToken, parse_string_all}
+import pears.{Custom, UnexpectedToken, parse_string_all}
 import pears/chars.{
   alphanumeric, case_insensitive, float, hex_digit, integer, letter, lexeme,
-  line_comment, string, string_literal,
+  line_comment, natural, string, string_literal,
 }
 import pears/combinators.{pair}
 
@@ -91,4 +93,35 @@ pub fn lexeme_test() {
 
   pair(lexeme(string("a")), string("b"))
   |> should_parse("a  b", #("a", "b"))
+}
+
+pub fn natural_test() {
+  natural()
+  |> should_parse("0", 0)
+  |> should_parse("007", 7)
+
+  // too large for JavaScript to represent exactly
+  let result =
+    parse_string_all("9007199254740993", natural())
+    |> result.map(int.to_string)
+  let exact_or_error =
+    result == Ok("9007199254740993")
+    || result == Error(Custom(0, "integer out of range"))
+  exact_or_error |> should.be_true()
+}
+
+pub fn float_out_of_range_test() {
+  parse_string_all("1.0e999", float())
+  |> should.equal(Error(Custom(0, "float out of range")))
+
+  parse_string_all("-1.0e999", float())
+  |> should.equal(Error(Custom(0, "float out of range")))
+}
+
+pub fn surrogate_pair_test() {
+  string_literal()
+  |> should_parse("\"\\uD83D\\uDE00\"", "😀")
+  |> should_fail_with("\"\\uD83D\"", Custom(2, "invalid code point"))
+  |> should_fail_with("\"\\uD83D\\u0041\"", Custom(2, "invalid code point"))
+  |> should_fail_with("\"\\uDE00\"", Custom(2, "invalid code point"))
 }

@@ -19,6 +19,10 @@ const ascii_letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 const hex_digits = "0123456789abcdefABCDEF"
 
+const max_float = 1.7976931348623157e308
+
+const min_float = -1.7976931348623157e308
+
 /// A grapheme is a user-perceived character.
 pub type Char =
   String
@@ -139,13 +143,26 @@ pub fn digit() -> Parser(Char, Char) {
   |> label("digit")
 }
 
-/// Parses a non-negative integer consisting of one or more digits.
+/// Parses a non-negative integer consisting of one or more digits. On JavaScript,
+/// integers too large to be represented exactly fail with a custom error.
 pub fn natural() -> Parser(Char, Int) {
   many1(digit())
-  |> map(fn(digits) {
-    let assert Ok(number) = int.parse(string.concat(digits))
-    number
+  |> try_map(fn(digits) {
+    let digits = string.concat(digits)
+    let assert Ok(number) = int.parse(digits)
+    // JavaScript integers lose precision above 2^53
+    case int.to_string(number) == trim_leading_zeros(digits) {
+      True -> Ok(number)
+      False -> Error("integer out of range")
+    }
   })
+}
+
+fn trim_leading_zeros(digits: String) -> String {
+  case digits {
+    "0" <> rest if rest != "" -> trim_leading_zeros(rest)
+    _ -> digits
+  }
 }
 
 /// Parses an integer with an optional leading `-`.
@@ -168,7 +185,7 @@ pub fn integer() -> Parser(Char, Int) {
 }
 
 /// Parses a number with a fractional part and an optional exponent, like
-/// `-1.5` or `2.0e10`. On Erlang, numbers out of range fail with a custom error.
+/// `-1.5` or `2.0e10`. Numbers out of range fail with a custom error.
 ///
 /// ```gleam
 /// import pears
@@ -184,14 +201,18 @@ pub fn float() -> Parser(Char, Float) {
     pair(pair(token("."), digits), optional(exponent)),
   ))
   |> try_map(fn(chars) {
-    float.parse(string.concat(chars))
-    |> result.replace_error("float out of range")
+    case float.parse(string.concat(chars)) {
+      // Erlang fails to parse floats out of range, JavaScript returns Infinity
+      Ok(value) if value <=. max_float && value >=. min_float -> Ok(value)
+      _ -> Error("float out of range")
+    }
   })
   |> label("float")
 }
 
 /// Parses a double-quoted string with JSON-style escapes (`\"`, `\\`, `\/`,
-/// `\b`, `\f`, `\n`, `\r`, `\t` and `\uXXXX`) and returns its contents.
+/// `\b`, `\f`, `\n`, `\r`, `\t` and `\uXXXX`, including surrogate pairs) and
+/// returns its contents.
 ///
 /// ```gleam
 /// import pears
@@ -199,11 +220,30 @@ pub fn float() -> Parser(Char, Float) {
 /// assert pears.parse_string_all("\"a\\nb\"", string_literal()) == Ok("a\nb")
 /// ```
 pub fn string_literal() -> Parser(Char, String) {
+  let hex4 =
+    exactly(hex_digit(), 4)
+    |> map(fn(digits) {
+      let assert Ok(code) = int.base_parse(string.concat(digits), 16)
+      code
+    })
   let unicode =
-    skip_then(token("u"), exactly(hex_digit(), 4))
-    |> try_map(fn(digits) {
-      int.base_parse(string.concat(digits), 16)
-      |> result.try(string.utf_codepoint)
+    {
+      use high <- then(skip_then(token("u"), hex4))
+      case high >= 0xD800 && high <= 0xDBFF {
+        False -> succeed(high)
+        // a high surrogate is only valid when followed by an escaped low surrogate
+        True -> {
+          use low <- then(optional(skip_then(string("\\u"), hex4)))
+          case low {
+            Some(low) if low >= 0xDC00 && low <= 0xDFFF ->
+              succeed(0x10000 + { high - 0xD800 } * 0x400 + { low - 0xDC00 })
+            _ -> succeed(high)
+          }
+        }
+      }
+    }
+    |> try_map(fn(code) {
+      string.utf_codepoint(code)
       |> result.map(fn(codepoint) { string.from_utf_codepoints([codepoint]) })
       |> result.replace_error("invalid code point")
     })
