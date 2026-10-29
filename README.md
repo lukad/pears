@@ -3,8 +3,6 @@
 [![Package Version](https://img.shields.io/hexpm/v/pears)](https://hex.pm/packages/pears)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/pears/)
 
-🚧️ **This library is in early development. Expect breaking changes.** 🚧
-
 ## Installation
 
 ```sh
@@ -53,11 +51,6 @@ chars.format_error(error, source)
 Further documentation can be found at [https://hexdocs.pm/pears](https://hexdocs.pm/pears/pears.html).
 
 See the [test](./test) directory for more examples.
-
-## What's missing?
-
-- Test helpers
-- ...
 
 ## Development
 
