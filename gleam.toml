@@ -4,6 +4,11 @@ description = "A parser combinator library for Gleam"
 licences = ["MIT"]
 repository = { type = "github", user = "lukad", repo = "pears" }
 
+[documentation]
+pages = [
+  { title = "Changelog", path = "changelog.html", source = "./CHANGELOG.md" },
+]
+
 [dependencies]
 gleam_stdlib = ">= 1.0.0 and < 2.0.0"
 
