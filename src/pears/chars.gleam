@@ -1,3 +1,26 @@
+//// Parsers for strings, which `pears.parse_string` splits into graphemes
+//// (`Char`s).
+////
+//// - **Characters**: [`letter`](#letter), [`digit`](#digit),
+////   [`alphanumeric`](#alphanumeric), [`hex_digit`](#hex_digit),
+////   [`whitespace`](#whitespace)
+//// - **Text**: [`string`](#string), [`case_insensitive`](#case_insensitive),
+////   [`string_literal`](#string_literal), [`line_comment`](#line_comment)
+//// - **Numbers**: [`natural`](#natural), [`integer`](#integer),
+////   [`float`](#float)
+//// - **Whitespace**: [`whitespace0`](#whitespace0),
+////   [`whitespace1`](#whitespace1), [`lexeme`](#lexeme)
+//// - **Errors**: [`format_error`](#format_error),
+////   [`line_column`](#line_column)
+////
+//// ```gleam
+//// import pears
+//// import pears/combinators.{sep_by0}
+////
+//// let numbers = sep_by0(lexeme(integer()), lexeme(string(",")))
+//// assert pears.parse_string_all("1, -2, 3", numbers) == Ok([1, -2, 3])
+//// ```
+
 import gleam/float
 import gleam/int
 import gleam/list
@@ -28,17 +51,37 @@ pub type Char =
   String
 
 /// Parses a character if it is whitespace according to the Unicode standard.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("\t", whitespace()) == Ok("\t")
+/// ```
 pub fn whitespace() -> Parser(Char, Char) {
   satisfying(fn(c) { string.trim(c) == "" })
   |> label("whitespace")
 }
 
 /// Parses zero or more whitespace characters. Hidden from error messages.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("  ", whitespace0()) == Ok([" ", " "])
+/// assert pears.parse_string_all("", whitespace0()) == Ok([])
+/// ```
 pub fn whitespace0() -> Parser(Char, List(Char)) {
   hidden(many0(whitespace()))
 }
 
 /// Parses one or more whitespace characters.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("  ", whitespace1()) == Ok([" ", " "])
+/// let assert Error(_) = pears.parse_string_all("", whitespace1())
+/// ```
 pub fn whitespace1() -> Parser(Char, List(Char)) {
   many1(whitespace())
 }
@@ -55,6 +98,13 @@ pub fn lexeme(parser: Parser(Char, a)) -> Parser(Char, a) {
 }
 
 /// Parses a given string. Errors point at the first character that doesn't match.
+///
+/// ```gleam
+/// import pears.{UnexpectedToken}
+///
+/// assert pears.parse_string_all("let", string("let")) == Ok("let")
+/// assert pears.parse_string("lex", string("let")) == Error(UnexpectedToken(2, ["\"let\""], "x"))
+/// ```
 pub fn string(str: String) -> Parser(Char, String) {
   let chars = string.to_graphemes(str)
   new_parser(fn(in: Input(Char)) { do_string(in, chars, str) })
@@ -113,18 +163,36 @@ fn do_case_insensitive(
 }
 
 /// Parses an ASCII letter, a-z or A-Z.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("Q", letter()) == Ok("Q")
+/// ```
 pub fn letter() -> Parser(Char, Char) {
   satisfying(string.contains(ascii_letters, _))
   |> label("letter")
 }
 
 /// Parses an ASCII letter or a digit.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("7", alphanumeric()) == Ok("7")
+/// ```
 pub fn alphanumeric() -> Parser(Char, Char) {
   satisfying(fn(c) { string.contains(ascii_letters, c) || is_digit(c) })
   |> label("letter or digit")
 }
 
 /// Parses a hexadecimal digit, 0-9, a-f or A-F.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("F", hex_digit()) == Ok("F")
+/// ```
 pub fn hex_digit() -> Parser(Char, Char) {
   satisfying(string.contains(hex_digits, _))
   |> label("hex digit")
@@ -138,6 +206,12 @@ fn is_digit(c: Char) -> Bool {
 }
 
 /// Parses a digit in the range 0-9.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("7", digit()) == Ok("7")
+/// ```
 pub fn digit() -> Parser(Char, Char) {
   satisfying(is_digit)
   |> label("digit")
@@ -145,6 +219,12 @@ pub fn digit() -> Parser(Char, Char) {
 
 /// Parses a non-negative integer consisting of one or more digits. On JavaScript,
 /// integers too large to be represented exactly fail with a custom error.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("042", natural()) == Ok(42)
+/// ```
 pub fn natural() -> Parser(Char, Int) {
   many1(digit())
   |> try_map(fn(digits) {
@@ -284,6 +364,10 @@ pub fn line_comment(start: String) -> Parser(Char, String) {
 }
 
 /// Returns the 1-based line and column of the character at `position` in `source`.
+///
+/// ```gleam
+/// assert line_column("ab\ncd", 4) == #(2, 2)
+/// ```
 pub fn line_column(source: String, position: Int) -> #(Int, Int) {
   source
   |> string.to_graphemes()
@@ -298,6 +382,15 @@ pub fn line_column(source: String, position: Int) -> #(Int, Int) {
 
 /// Formats a parse error with the line and column in `source`, the parsed string,
 /// e.g. `line 2, column 4: expected "," or "]", found "x"`.
+///
+/// ```gleam
+/// import pears
+/// import pears/combinators.{many0, or}
+///
+/// let source = "ab\nc!"
+/// let assert Error(error) = pears.parse_string_all(source, many0(or(letter(), whitespace())))
+/// assert format_error(error, source) == "line 2, column 2: expected letter, whitespace or end of input, found \"!\""
+/// ```
 pub fn format_error(error: ParseError(Char), source: String) -> String {
   let #(line, column) = line_column(source, error.position)
   "line "

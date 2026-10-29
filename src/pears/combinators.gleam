@@ -1,3 +1,28 @@
+//// Functions that build parsers and combine them into bigger ones. They work on
+//// any kind of token; `pears/chars` has parsers made for strings. For an
+//// introduction, see the `pears` module.
+////
+//// - **Single tokens**: [`token`](#token), [`any`](#any),
+////   [`satisfying`](#satisfying), [`one_of`](#one_of), [`none_of`](#none_of),
+////   [`eof`](#eof)
+//// - **Sequences**: [`then`](#then), [`pair`](#pair), [`seq`](#seq),
+////   [`then_skip`](#then_skip), [`skip_then`](#skip_then),
+////   [`between`](#between)
+//// - **Alternatives**: [`or`](#or), [`choice`](#choice),
+////   [`optional`](#optional), [`unwrap`](#unwrap)
+//// - **Repetition**: [`many0`](#many0), [`many1`](#many1),
+////   [`exactly`](#exactly), [`at_least`](#at_least), [`at_most`](#at_most),
+////   [`many_till`](#many_till), [`sep_by0`](#sep_by0), [`sep_by1`](#sep_by1),
+////   [`sep_end_by0`](#sep_end_by0), [`sep_end_by1`](#sep_end_by1)
+//// - **Operators**: [`chain_left`](#chain_left), [`chain_right`](#chain_right)
+//// - **Values**: [`succeed`](#succeed), [`map`](#map), [`replace`](#replace),
+////   [`try_map`](#try_map), [`recognize`](#recognize),
+////   [`with_span`](#with_span)
+//// - **Lookahead**: [`peek`](#peek), [`not_followed_by`](#not_followed_by)
+//// - **Errors**: [`fail`](#fail), [`label`](#label), [`hidden`](#hidden),
+////   [`map_error`](#map_error)
+//// - **Recursion**: [`lazy`](#lazy)
+
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -163,6 +188,13 @@ pub fn try_map(
 }
 
 /// Maps the result of a parser to a new value using a mapper function.
+///
+/// ```gleam
+/// import pears
+/// import pears/chars
+///
+/// assert pears.parse_string_all("21", map(chars.natural(), fn(n) { n * 2 })) == Ok(42)
+/// ```
 pub fn map(parser: Parser(i, a), fun: fn(a) -> b) -> Parser(i, b) {
   new_parser(fn(input: Input(i)) {
     run(parser, input)
@@ -177,6 +209,13 @@ pub fn map(parser: Parser(i, a), fun: fn(a) -> b) -> Parser(i, b) {
 }
 
 /// Maps the error of a parser to a new error using a mapper function.
+///
+/// ```gleam
+/// import pears.{Custom}
+///
+/// let parser = map_error(token("a"), fn(error) { Custom(error.position, "expected an a") })
+/// assert pears.parse_string("b", parser) == Error(Custom(0, "expected an a"))
+/// ```
 pub fn map_error(
   parser: Parser(i, a),
   fun: fn(ParseError(i)) -> ParseError(i),
@@ -188,6 +227,14 @@ pub fn map_error(
 }
 
 /// Reports `name` as expected when the parser fails without consuming input.
+///
+/// ```gleam
+/// import pears.{UnexpectedToken}
+/// import pears/chars
+///
+/// let number = label(many1(chars.digit()), "number")
+/// assert pears.parse_string("x", number) == Error(UnexpectedToken(0, ["number"], "x"))
+/// ```
 pub fn label(parser: Parser(i, a), name: String) -> Parser(i, a) {
   new_parser(fn(in: Input(i)) {
     let position = input.position(in)
@@ -239,6 +286,13 @@ pub fn not_followed_by(parser: Parser(i, a)) -> Parser(i, Nil) {
 }
 
 /// Leaves the parser out of error messages, e.g. for optional whitespace.
+///
+/// ```gleam
+/// import pears.{UnexpectedToken}
+///
+/// let parser = skip_then(hidden(many0(token(" "))), token("a"))
+/// assert pears.parse_string("x", parser) == Error(UnexpectedToken(0, ["\"a\""], "x"))
+/// ```
 pub fn hidden(parser: Parser(i, a)) -> Parser(i, a) {
   new_parser(fn(in: Input(i)) {
     let position = input.position(in)
@@ -252,11 +306,27 @@ pub fn hidden(parser: Parser(i, a)) -> Parser(i, a) {
 }
 
 /// Maps the result of a parser to a constant value.
+///
+/// ```gleam
+/// import pears
+/// import pears/chars
+///
+/// assert pears.parse_string_all("yes", replace(chars.string("yes"), True)) == Ok(True)
+/// ```
 pub fn replace(parser: Parser(i, a), value: b) -> Parser(i, b) {
   map(parser, fn(_) { value })
 }
 
-/// Tries to apply the first parser, if it fails it applies the second parser.
+/// Tries the first parser, and if it fails, the second one. The second parser
+/// starts where the first one did, even if the first consumed input before failing.
+///
+/// ```gleam
+/// import pears
+/// import pears/chars
+///
+/// let parser = or(chars.string("ab"), chars.string("ac"))
+/// assert pears.parse_string_all("ac", parser) == Ok("ac")
+/// ```
 pub fn or(first: Parser(i, a), second: Parser(i, a)) -> Parser(i, a) {
   new_parser(fn(input: Input(i)) {
     case run(first, input) {
@@ -275,6 +345,12 @@ pub fn or(first: Parser(i, a), second: Parser(i, a)) -> Parser(i, a) {
 }
 
 /// Consumes any single item from the input except for the end of file.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("x", any()) == Ok("x")
+/// ```
 pub fn any() -> Parser(i, i) {
   new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
@@ -285,6 +361,13 @@ pub fn any() -> Parser(i, i) {
 }
 
 /// Consumes the end of the input and returns a Nil value. Fails if there is any input left.
+///
+/// ```gleam
+/// import pears
+///
+/// let assert Ok(_) = pears.parse_string("a", then_skip(token("a"), eof()))
+/// let assert Error(_) = pears.parse_string("ab", then_skip(token("a"), eof()))
+/// ```
 pub fn eof() -> Parser(i, Nil) {
   new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
@@ -296,6 +379,13 @@ pub fn eof() -> Parser(i, Nil) {
 }
 
 /// Consumes a single item from the input that satisfies the given predicate function.
+///
+/// ```gleam
+/// import pears
+///
+/// let vowel = satisfying(fn(c) { string.contains("aeiou", c) })
+/// assert pears.parse_string_all("e", vowel) == Ok("e")
+/// ```
 pub fn satisfying(predicate: fn(i) -> Bool) -> Parser(i, i) {
   new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
@@ -310,6 +400,13 @@ pub fn satisfying(predicate: fn(i) -> Bool) -> Parser(i, i) {
 }
 
 /// Consumes a single item from the input that is equal to the given item.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("a", token("a")) == Ok("a")
+/// assert pears.parse_all([1, 2], pair(token(1), token(2))) == Ok(#(1, 2))
+/// ```
 pub fn token(item: i) -> Parser(i, i) {
   new_parser(fn(in: Input(i)) {
     case input.tokens(in) {
@@ -323,6 +420,12 @@ pub fn token(item: i) -> Parser(i, i) {
 }
 
 /// Applies both parsers and returns a tuple of the results.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("ab", pair(token("a"), token("b"))) == Ok(#("a", "b"))
+/// ```
 pub fn pair(first: Parser(i, a), second: Parser(i, b)) -> Parser(i, #(a, b)) {
   new_parser(fn(in: Input(i)) {
     use parsed_1 <- continue(run(first, in))
@@ -332,6 +435,12 @@ pub fn pair(first: Parser(i, a), second: Parser(i, b)) -> Parser(i, #(a, b)) {
 }
 
 /// Applies the given parsers in sequence and returns a list of the results
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("abc", seq([token("a"), token("b"), token("c")])) == Ok(["a", "b", "c"])
+/// ```
 pub fn seq(parsers: List(Parser(i, a))) -> Parser(i, List(a)) {
   new_parser(fn(input: Input(i)) { do_sequence(parsers, input, []) })
 }
@@ -351,6 +460,12 @@ fn do_sequence(
 }
 
 /// Applies the first parser and then the second parser, returning the result of the first parser.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("ab", then_skip(token("a"), token("b"))) == Ok("a")
+/// ```
 pub fn then_skip(first: Parser(i, a), second: Parser(i, b)) -> Parser(i, a) {
   new_parser(fn(in: Input(i)) {
     use parsed_1 <- continue(run(first, in))
@@ -360,6 +475,12 @@ pub fn then_skip(first: Parser(i, a), second: Parser(i, b)) -> Parser(i, a) {
 }
 
 /// Applies the first parser and then the second parser, returning the result of the second parser.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("ab", skip_then(token("a"), token("b"))) == Ok("b")
+/// ```
 pub fn skip_then(first: Parser(i, a), second: Parser(i, b)) -> Parser(i, b) {
   new_parser(fn(in: Input(i)) {
     use parsed_1 <- continue(run(first, in))
@@ -371,6 +492,13 @@ pub fn skip_then(first: Parser(i, a), second: Parser(i, b)) -> Parser(i, b) {
 /// Applies the given parser zero or more times.
 ///
 /// Stops as soon as the parser fails or succeeds without consuming any input.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("aaa", many0(token("a"))) == Ok(["a", "a", "a"])
+/// assert pears.parse_string_all("", many0(token("a"))) == Ok([])
+/// ```
 pub fn many0(parser: Parser(i, a)) -> Parser(i, List(a)) {
   new_parser(fn(in: Input(i)) { do_many(parser, in, [], None) })
 }
@@ -404,6 +532,13 @@ fn do_many(
 }
 
 /// Applies the given parser one or more times.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("aaa", many1(token("a"))) == Ok(["a", "a", "a"])
+/// let assert Error(_) = pears.parse_string_all("", many1(token("a")))
+/// ```
 pub fn many1(parser: Parser(i, a)) -> Parser(i, List(a)) {
   new_parser(fn(in: Input(i)) {
     use parsed <- continue(run(parser, in))
@@ -583,6 +718,12 @@ pub fn lazy(f: fn() -> Parser(i, a)) -> Parser(i, a) {
 }
 
 /// Consumes an item that is included in the given list.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("-", one_of(["+", "-"])) == Ok("-")
+/// ```
 pub fn one_of(items: List(i)) -> Parser(i, i) {
   satisfying(fn(c) { list.contains(items, c) })
   |> map_error(fn(error) {
@@ -591,11 +732,23 @@ pub fn one_of(items: List(i)) -> Parser(i, i) {
 }
 
 /// Consumes an item that is not included in the given list.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("x", none_of(["+", "-"])) == Ok("x")
+/// ```
 pub fn none_of(items: List(i)) -> Parser(i, i) {
   satisfying(fn(c) { !list.contains(items, c) })
 }
 
 /// Applies the given parser between the open and close parsers, returning the result of the inner parser.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("(a)", between(token("a"), token("("), token(")"))) == Ok("a")
+/// ```
 pub fn between(
   parser: Parser(i, a),
   open: Parser(i, b),
@@ -608,6 +761,13 @@ pub fn between(
 
 /// Tries to apply the given parsers in order and returns the result of the first one that succeeds.
 /// If all fail, returns the error that got furthest.
+///
+/// ```gleam
+/// import pears
+///
+/// let operator = choice([token("+"), token("-"), token("*")])
+/// assert pears.parse_string_all("*", operator) == Ok("*")
+/// ```
 pub fn choice(parsers: List(Parser(i, a))) -> Parser(i, a) {
   new_parser(fn(in: Input(i)) { do_choice(parsers, in, None) })
 }
@@ -693,6 +853,14 @@ pub fn chain_right(
 }
 
 /// Parses zero or more occurrences of the given parser separated by the given separator.
+///
+/// ```gleam
+/// import pears
+/// import pears/chars
+///
+/// assert pears.parse_string_all("1,2,3", sep_by0(chars.natural(), token(","))) == Ok([1, 2, 3])
+/// assert pears.parse_string_all("", sep_by0(chars.natural(), token(","))) == Ok([])
+/// ```
 pub fn sep_by0(
   parser: Parser(i, a),
   separator: Parser(i, b),
@@ -713,6 +881,14 @@ pub fn sep_by0(
 }
 
 /// Parses one or more occurrences of the given parser separated by the given separator.
+///
+/// ```gleam
+/// import pears
+/// import pears/chars
+///
+/// assert pears.parse_string_all("1,2,3", sep_by1(chars.natural(), token(","))) == Ok([1, 2, 3])
+/// let assert Error(_) = pears.parse_string_all("", sep_by1(chars.natural(), token(",")))
+/// ```
 pub fn sep_by1(
   parser: Parser(i, a),
   separator: Parser(i, b),
@@ -756,6 +932,13 @@ pub fn sep_end_by1(
 
 /// Applies the given parser and wraps the result in an `Option`,
 /// returning `None` if the parser fails instead of an error.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("-", optional(token("-"))) == Ok(Some("-"))
+/// assert pears.parse_string_all("", optional(token("-"))) == Ok(None)
+/// ```
 pub fn optional(parser: Parser(i, a)) -> Parser(i, Option(a)) {
   new_parser(fn(in: Input(i)) {
     case run(parser, in) {
@@ -767,6 +950,12 @@ pub fn optional(parser: Parser(i, a)) -> Parser(i, Option(a)) {
 }
 
 /// Maps a parser that returns an `Option` to a parser that returns a value or a default value.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("", unwrap(optional(token("-")), "+")) == Ok("+")
+/// ```
 pub fn unwrap(parser: Parser(i, Option(a)), default: a) -> Parser(i, a) {
   parser
   |> map(fn(maybe_value) {
@@ -796,6 +985,14 @@ pub fn with_span(parser: Parser(i, a)) -> Parser(i, #(a, pears.Span)) {
 }
 
 /// Creates a parser that returns the consumed tokens instead of its parsed value.
+///
+/// ```gleam
+/// import pears
+/// import pears/chars
+///
+/// let decimal = recognize(pair(chars.natural(), pair(token("."), chars.natural())))
+/// assert pears.parse_string_all("1.05", decimal) == Ok(["1", ".", "0", "5"])
+/// ```
 pub fn recognize(parser: Parser(i, a)) -> Parser(i, List(i)) {
   new_parser(fn(in: Input(i)) {
     use parsed <- result.try(run(parser, in))
