@@ -48,6 +48,52 @@ chars.format_error(error, source)
 // => line 1, column 12: expected end of input, found "x"
 ```
 
+Parsers work on any type of token, so you can split lexing and parsing.
+Here a lexer turns a string into tokens and a parser turns those into an AST:
+
+```gleam
+import pears.{type Parser}
+import pears/chars.{type Char}
+import pears/combinators.{
+  any, chain_left, choice, many0, map, replace, skip_then, token, try_map,
+}
+
+pub type Token {
+  Number(Int)
+  Plus
+}
+
+pub type Expr {
+  Literal(Int)
+  Add(Expr, Expr)
+}
+
+fn lexer() -> Parser(Char, List(Token)) {
+  let token = choice([map(chars.natural(), Number), replace(token("+"), Plus)])
+  skip_then(chars.whitespace0(), many0(chars.lexeme(token)))
+}
+
+fn parser() -> Parser(Token, Expr) {
+  let literal =
+    try_map(any(), fn(token) {
+      case token {
+        Number(n) -> Ok(Literal(n))
+        _ -> Error("expected a number")
+      }
+    })
+  chain_left(literal, replace(token(Plus), Add))
+}
+
+pub fn main() {
+  let assert Ok(tokens) = pears.parse_string_all("1 + 2 + 3", lexer())
+  let assert Ok(Add(Add(Literal(1), Literal(2)), Literal(3))) =
+    pears.parse_all(tokens, parser())
+}
+```
+
+[`test/lexer_test.gleam`](./test/lexer_test.gleam) has a bigger example that
+keeps each token's span to report errors with line and column.
+
 Further documentation can be found at [https://hexdocs.pm/pears](https://hexdocs.pm/pears/pears.html).
 
 See the [test](./test) directory for more examples.
