@@ -1,5 +1,6 @@
 import gleam/int
 import gleam/result
+import gleam/string
 import gleeunit/should
 import helpers.{should_fail_with, should_not_parse, should_parse}
 import pears.{Custom, UnexpectedToken, parse_string_all}
@@ -108,6 +109,17 @@ pub fn natural_test() {
     result == Ok("9007199254740993")
     || result == Error(Custom(0, "integer out of range"))
   exact_or_error |> should.be_true()
+}
+
+pub fn integer_too_large_for_any_target_test() {
+  // over the size limit of Erlang integers
+  let digits = string.repeat("9", 1_400_000)
+
+  parse_string_all(digits, natural())
+  |> should.equal(Error(Custom(0, "integer out of range")))
+
+  parse_string_all("-" <> digits, integer())
+  |> should.equal(Error(Custom(1, "integer out of range")))
 }
 
 pub fn float_out_of_range_test() {

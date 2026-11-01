@@ -217,8 +217,9 @@ pub fn digit() -> Parser(Char, Char) {
   |> label("digit")
 }
 
-/// Parses a non-negative integer consisting of one or more digits. On JavaScript,
-/// integers too large to be represented exactly fail with a custom error.
+/// Parses a non-negative integer consisting of one or more digits. Integers too
+/// large to be represented exactly fail with a custom error: on JavaScript above
+/// 2^53, on Erlang only at over a million digits.
 ///
 /// ```gleam
 /// import pears
@@ -229,11 +230,15 @@ pub fn natural() -> Parser(Char, Int) {
   many1(digit())
   |> try_map(fn(digits) {
     let digits = string.concat(digits)
-    let assert Ok(number) = int.parse(digits)
-    // JavaScript integers lose precision above 2^53
-    case int.to_string(number) == trim_leading_zeros(digits) {
-      True -> Ok(number)
-      False -> Error("integer out of range")
+    case int.parse(digits) {
+      // JavaScript integers lose precision above 2^53
+      Ok(number) ->
+        case int.to_string(number) == trim_leading_zeros(digits) {
+          True -> Ok(number)
+          False -> Error("integer out of range")
+        }
+      // Erlang integers have a maximum size
+      Error(_) -> Error("integer out of range")
     }
   })
 }
