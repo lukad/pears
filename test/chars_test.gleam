@@ -137,3 +137,19 @@ pub fn surrogate_pair_test() {
   |> should_fail_with("\"\\uD83D\\u0041\"", Custom(2, "invalid code point"))
   |> should_fail_with("\"\\uDE00\"", Custom(2, "invalid code point"))
 }
+
+pub fn string_literal_combining_marks_test() {
+  let expected = ["\"\\\\\"", "\"\\\"\""]
+
+  string_literal()
+  |> should_parse("\"e\u{0301}\"", "e\u{0301}")
+  // a combining mark forms a single grapheme with the quote or backslash before it
+  |> should_fail_with(
+    "\"abc\"\u{0301}",
+    UnexpectedToken(4, expected, "\"\u{0301}"),
+  )
+  |> should_fail_with(
+    "\"\\\u{0301}\"",
+    UnexpectedToken(1, expected, "\\\u{0301}"),
+  )
+}

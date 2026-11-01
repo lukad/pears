@@ -347,7 +347,12 @@ pub fn string_literal() -> Parser(Char, String) {
         unicode,
       ]),
     )
-  or(none_of(["\"", "\\"]), escape)
+  // a quote or backslash can start a bigger grapheme, e.g. with a combining mark
+  let content =
+    satisfying(fn(c) {
+      !string.starts_with(c, "\"") && !string.starts_with(c, "\\")
+    })
+  or(content, escape)
   |> many0()
   |> map(string.concat)
   |> between(token("\""), token("\""))
