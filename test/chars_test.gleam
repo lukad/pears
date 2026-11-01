@@ -1,4 +1,5 @@
 import gleam/int
+import gleam/list
 import gleam/result
 import gleam/string
 import gleeunit/should
@@ -6,7 +7,7 @@ import helpers.{should_fail_with, should_not_parse, should_parse}
 import pears.{Custom, UnexpectedToken, parse_string_all}
 import pears/chars.{
   alphanumeric, case_insensitive, float, hex_digit, integer, letter, lexeme,
-  line_comment, natural, string, string_literal,
+  line_comment, natural, string, string_literal, whitespace,
 }
 import pears/combinators.{pair}
 
@@ -54,6 +55,20 @@ pub fn float_test() {
   parse_string_all("1.", float()) |> should.be_error()
   parse_string_all(".5", float()) |> should.be_error()
   parse_string_all("1.5e", float()) |> should.be_error()
+}
+
+pub fn whitespace_test() {
+  // Pattern_White_Space and CRLF as one grapheme, without U+200E and U+200F
+  // which `string.trim` only removes on Erlang
+  [
+    "\t", "\n", "\u{000B}", "\u{000C}", "\r", "\r\n", " ", "\u{0085}",
+    "\u{2028}", "\u{2029}",
+  ]
+  |> list.each(fn(c) { whitespace() |> should_parse(c, c) })
+
+  // nonbreaking and zero width characters and a space with a combining mark
+  ["a", "\u{00A0}", "\u{200B}", "\u{3000}", "\u{FEFF}", " \u{0301}"]
+  |> list.each(fn(c) { whitespace() |> should_not_parse(c) })
 }
 
 pub fn string_literal_test() {
