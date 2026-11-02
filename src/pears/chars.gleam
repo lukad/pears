@@ -170,8 +170,13 @@ fn do_case_insensitive(
 /// assert pears.parse_string_all("Q", letter()) == Ok("Q")
 /// ```
 pub fn letter() -> Parser(Char, Char) {
-  satisfying(string.contains(ascii_letters, _))
+  satisfying(is_one_of(_, ascii_letters))
   |> label("letter")
+}
+
+/// `chars` only holds ASCII, so a single byte is one of its characters.
+fn is_one_of(c: Char, chars: String) -> Bool {
+  string.byte_size(c) == 1 && string.contains(chars, c)
 }
 
 /// Parses an ASCII letter or a digit.
@@ -182,7 +187,7 @@ pub fn letter() -> Parser(Char, Char) {
 /// assert pears.parse_string_all("7", alphanumeric()) == Ok("7")
 /// ```
 pub fn alphanumeric() -> Parser(Char, Char) {
-  satisfying(fn(c) { string.contains(ascii_letters, c) || is_digit(c) })
+  satisfying(fn(c) { is_one_of(c, ascii_letters) || is_digit(c) })
   |> label("letter or digit")
 }
 
@@ -194,7 +199,7 @@ pub fn alphanumeric() -> Parser(Char, Char) {
 /// assert pears.parse_string_all("F", hex_digit()) == Ok("F")
 /// ```
 pub fn hex_digit() -> Parser(Char, Char) {
-  satisfying(string.contains(hex_digits, _))
+  satisfying(is_one_of(_, hex_digits))
   |> label("hex digit")
 }
 

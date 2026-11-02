@@ -34,6 +34,13 @@ pub fn hex_digit_test() {
   |> should_fail_with("g", UnexpectedToken(0, ["hex digit"], "g"))
 }
 
+pub fn character_classes_reject_other_tokens_test() {
+  // tokens passed to `pears.parse` don't have to be single characters
+  use parser <- list.each([letter(), alphanumeric(), hex_digit()])
+  use token <- list.each(["ab", "", "a\u{0301}"])
+  pears.parse([token], parser) |> should.be_error()
+}
+
 pub fn integer_test() {
   integer()
   |> should_parse("0", 0)
