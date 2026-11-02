@@ -4,8 +4,8 @@ import pears.{Custom, UnexpectedEndOfInput, UnexpectedToken}
 import pears/chars
 import pears/combinators.{
   between, choice, eof, exactly, fail, hidden, label, many0, many_till, none_of,
-  not_followed_by, optional, or, pair, peek, satisfying, sep_by0, seq, skip_then,
-  succeed, then, then_skip, token, try_map,
+  not_followed_by, one_of, optional, or, pair, peek, satisfying, sep_by0, seq,
+  skip_then, succeed, then, then_skip, token, try_map,
 }
 
 pub fn just_test() {
@@ -65,6 +65,12 @@ pub fn labelled_test() {
 pub fn eof_test() {
   then_skip(token("a"), eof())
   |> should_fail_with("ab", UnexpectedToken(1, ["end of input"], "b"))
+}
+
+pub fn one_of_test() {
+  one_of(["+", "-"])
+  |> should_fail_with("x", UnexpectedToken(0, ["\"+\"", "\"-\""], "x"))
+  |> should_fail_with("", UnexpectedEndOfInput(0, ["\"+\"", "\"-\""]))
 }
 
 pub fn none_of_test() {

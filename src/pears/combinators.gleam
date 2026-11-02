@@ -725,10 +725,9 @@ pub fn lazy(f: fn() -> Parser(i, a)) -> Parser(i, a) {
 /// assert pears.parse_string_all("-", one_of(["+", "-"])) == Ok("-")
 /// ```
 pub fn one_of(items: List(i)) -> Parser(i, i) {
+  let expected = list.map(items, string.inspect)
   satisfying(fn(c) { list.contains(items, c) })
-  |> map_error(fn(error) {
-    with_expected(error, list.map(items, string.inspect))
-  })
+  |> map_error(with_expected(_, expected))
 }
 
 /// Consumes an item that is not included in the given list.
