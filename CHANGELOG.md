@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.0 - 2026-11-03
+
+### Added
+
+- `chars.newline`, which parses `\n` and `\r\n`.
+- `chars.number`, which parses integers and floats like `1`, `1.5` and `1e5`
+  as a `Float`.
+- `chars.recognize`, which returns the consumed text as a `String`.
+
 ## v1.0.1 - 2026-11-03
 
 ### Fixed
