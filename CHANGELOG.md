@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.0.1 - 2026-11-03
+
+### Fixed
+
+- `chars.natural` and `chars.integer` return an error instead of crashing on
+  Erlang for integers with over a million digits.
+- `chars.string_literal` rejects a quote or backslash followed by a combining
+  mark, and an unterminated string fails with `expected closing quote`.
+- `chars.letter`, `chars.alphanumeric` and `chars.hex_digit` only match single
+  characters.
+- `one_of` builds its expected list once instead of on every failure.
+
 ## v1.0.0 - 2026-10-29
 
 ### Breaking changes
