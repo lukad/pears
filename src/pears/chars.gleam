@@ -8,7 +8,7 @@
 ////   [`string_literal`](#string_literal), [`line_comment`](#line_comment),
 ////   [`recognize`](#recognize)
 //// - **Numbers**: [`natural`](#natural), [`integer`](#integer),
-////   [`float`](#float)
+////   [`float`](#float), [`number`](#number)
 //// - **Whitespace**: [`whitespace0`](#whitespace0),
 ////   [`whitespace1`](#whitespace1), [`newline`](#newline),
 ////   [`lexeme`](#lexeme)
@@ -36,7 +36,7 @@ import pears.{
 import pears/combinators.{
   between, choice, exactly, hidden, label, many0, many1, map, none_of, one_of,
   optional, or, pair, replace, satisfying, skip_then, succeed, then, then_skip,
-  token, try_map,
+  token, try_map, unwrap,
 }
 import pears/input.{type Input}
 
@@ -299,20 +299,49 @@ pub fn integer() -> Parser(Char, Int) {
 /// ```
 pub fn float() -> Parser(Char, Float) {
   let digits = many1(digit())
-  let exponent =
-    pair(one_of(["e", "E"]), pair(optional(one_of(["+", "-"])), digits))
   recognize(pair(
     pair(optional(token("-")), digits),
-    pair(pair(token("."), digits), optional(exponent)),
+    pair(pair(token("."), digits), optional(exponent())),
   ))
-  |> try_map(fn(text) {
-    case float.parse(text) {
-      // Erlang fails to parse floats out of range, JavaScript returns Infinity
-      Ok(value) if value <=. max_float && value >=. min_float -> Ok(value)
-      _ -> Error("float out of range")
-    }
-  })
+  |> try_map(parse_float)
   |> label("float")
+}
+
+/// Parses an integer or a float, like `1`, `-1.5` or `1e5`, and returns it as a
+/// `Float`. Numbers out of range fail with a custom error.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("1e3", number()) == Ok(1000.0)
+/// ```
+pub fn number() -> Parser(Char, Float) {
+  let digits = many1(digit())
+  let fraction = recognize(pair(token("."), digits))
+  {
+    use whole <- then(recognize(pair(optional(token("-")), digits)))
+    // `float.parse` needs a fractional part
+    use fraction <- then(unwrap(optional(fraction), ".0"))
+    use exponent <- then(unwrap(optional(exponent()), ""))
+    succeed(whole <> fraction <> exponent)
+  }
+  |> try_map(parse_float)
+  |> label("number")
+}
+
+fn exponent() -> Parser(Char, String) {
+  recognize(pair(
+    one_of(["e", "E"]),
+    pair(optional(one_of(["+", "-"])), many1(digit())),
+  ))
+}
+
+fn parse_float(text: String) -> Result(Float, String) {
+  case float.parse(text) {
+    // Erlang fails to parse floats out of range, JavaScript returns Infinity
+    Ok(value) if value <=. max_float && value >=. min_float -> Ok(value)
+    _ -> Error("float out of range")
+  }
 }
 
 /// Parses a double-quoted string with JSON-style escapes (`\"`, `\\`, `\/`,

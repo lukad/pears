@@ -7,7 +7,8 @@ import helpers.{should_fail_with, should_not_parse, should_parse}
 import pears.{Custom, UnexpectedToken, parse_string_all}
 import pears/chars.{
   alphanumeric, case_insensitive, float, hex_digit, integer, letter, lexeme,
-  line_comment, natural, newline, recognize, string, string_literal, whitespace,
+  line_comment, natural, newline, number, recognize, string, string_literal,
+  whitespace,
 }
 import pears/combinators.{many1, pair}
 
@@ -49,6 +50,22 @@ pub fn integer_test() {
   |> should_parse("-123", -123)
   |> should_fail_with("x", UnexpectedToken(0, ["integer"], "x"))
   |> should_fail_with("-x", UnexpectedToken(1, ["digit"], "x"))
+}
+
+pub fn number_test() {
+  parse_string_all("1", number()) |> should.equal(Ok(1.0))
+  parse_string_all("-2", number()) |> should.equal(Ok(-2.0))
+  parse_string_all("1.5", number()) |> should.equal(Ok(1.5))
+  parse_string_all("1e5", number()) |> should.equal(Ok(100_000.0))
+  parse_string_all("1E-2", number()) |> should.equal(Ok(0.01))
+  parse_string_all("2.5e+1", number()) |> should.equal(Ok(25.0))
+
+  parse_string_all("1.", number()) |> should.be_error()
+  parse_string_all(".5", number()) |> should.be_error()
+  parse_string_all("1e", number()) |> should.be_error()
+  parse_string_all("1e999", number())
+  |> should.equal(Error(Custom(0, "float out of range")))
+  number() |> should_fail_with("x", UnexpectedToken(0, ["number"], "x"))
 }
 
 pub fn recognize_test() {
