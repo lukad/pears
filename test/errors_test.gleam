@@ -220,6 +220,13 @@ pub fn chars_custom_errors_test() {
   |> should.equal(Error(Custom(2, "invalid code point")))
 }
 
+pub fn string_literal_unterminated_test() {
+  chars.string_literal()
+  |> should_fail_with("\"ab", UnexpectedEndOfInput(3, ["closing quote"]))
+  |> should_fail_with("\"a\\n", UnexpectedEndOfInput(4, ["closing quote"]))
+  |> should_fail_with("x", UnexpectedToken(0, ["string"], "x"))
+}
+
 pub fn peek_test() {
   peek(token("a"))
   |> should_fail_with("b", UnexpectedToken(0, ["\"a\""], "b"))

@@ -316,6 +316,7 @@ pub fn string_literal() -> Parser(Char, String) {
       let assert Ok(code) = int.base_parse(string.concat(digits), 16)
       code
     })
+
   let unicode =
     {
       use high <- then(skip_then(token("u"), hex4))
@@ -337,9 +338,10 @@ pub fn string_literal() -> Parser(Char, String) {
       |> result.map(fn(codepoint) { string.from_utf_codepoints([codepoint]) })
       |> result.replace_error("invalid code point")
     })
+
   let escape =
     skip_then(
-      token("\\"),
+      hidden(token("\\")),
       choice([
         token("\""),
         token("\\"),
@@ -352,6 +354,7 @@ pub fn string_literal() -> Parser(Char, String) {
         unicode,
       ]),
     )
+
   // a quote or backslash can start a bigger grapheme, e.g. with a combining mark
   let content =
     satisfying(fn(c) {
@@ -360,7 +363,7 @@ pub fn string_literal() -> Parser(Char, String) {
   or(content, escape)
   |> many0()
   |> map(string.concat)
-  |> between(token("\""), token("\""))
+  |> between(token("\""), label(token("\""), "closing quote"))
   |> label("string")
 }
 

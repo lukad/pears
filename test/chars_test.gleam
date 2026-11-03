@@ -161,7 +161,7 @@ pub fn surrogate_pair_test() {
 }
 
 pub fn string_literal_combining_marks_test() {
-  let expected = ["\"\\\\\"", "\"\\\"\""]
+  let expected = ["closing quote"]
 
   string_literal()
   |> should_parse("\"e\u{0301}\"", "e\u{0301}")
