@@ -7,9 +7,9 @@ import helpers.{should_fail_with, should_not_parse, should_parse}
 import pears.{Custom, UnexpectedToken, parse_string_all}
 import pears/chars.{
   alphanumeric, case_insensitive, float, hex_digit, integer, letter, lexeme,
-  line_comment, natural, newline, string, string_literal, whitespace,
+  line_comment, natural, newline, recognize, string, string_literal, whitespace,
 }
-import pears/combinators.{pair}
+import pears/combinators.{many1, pair}
 
 pub fn letter_test() {
   letter()
@@ -49,6 +49,12 @@ pub fn integer_test() {
   |> should_parse("-123", -123)
   |> should_fail_with("x", UnexpectedToken(0, ["integer"], "x"))
   |> should_fail_with("-x", UnexpectedToken(1, ["digit"], "x"))
+}
+
+pub fn recognize_test() {
+  recognize(pair(letter(), many1(alphanumeric())))
+  |> should_parse("x1y", "x1y")
+  |> should_fail_with("1", UnexpectedToken(0, ["letter"], "1"))
 }
 
 pub fn float_test() {

@@ -5,7 +5,8 @@
 ////   [`alphanumeric`](#alphanumeric), [`hex_digit`](#hex_digit),
 ////   [`whitespace`](#whitespace)
 //// - **Text**: [`string`](#string), [`case_insensitive`](#case_insensitive),
-////   [`string_literal`](#string_literal), [`line_comment`](#line_comment)
+////   [`string_literal`](#string_literal), [`line_comment`](#line_comment),
+////   [`recognize`](#recognize)
 //// - **Numbers**: [`natural`](#natural), [`integer`](#integer),
 ////   [`float`](#float)
 //// - **Whitespace**: [`whitespace0`](#whitespace0),
@@ -34,8 +35,8 @@ import pears.{
 }
 import pears/combinators.{
   between, choice, exactly, hidden, label, many0, many1, map, none_of, one_of,
-  optional, or, pair, recognize, replace, satisfying, skip_then, succeed, then,
-  then_skip, token, try_map,
+  optional, or, pair, replace, satisfying, skip_then, succeed, then, then_skip,
+  token, try_map,
 }
 import pears/input.{type Input}
 
@@ -304,8 +305,8 @@ pub fn float() -> Parser(Char, Float) {
     pair(optional(token("-")), digits),
     pair(pair(token("."), digits), optional(exponent)),
   ))
-  |> try_map(fn(chars) {
-    case float.parse(string.concat(chars)) {
+  |> try_map(fn(text) {
+    case float.parse(text) {
       // Erlang fails to parse floats out of range, JavaScript returns Infinity
       Ok(value) if value <=. max_float && value >=. min_float -> Ok(value)
       _ -> Error("float out of range")
@@ -379,6 +380,20 @@ pub fn string_literal() -> Parser(Char, String) {
   |> map(string.concat)
   |> between(token("\""), label(token("\""), "closing quote"))
   |> label("string")
+}
+
+/// Runs the parser and returns the text it consumed.
+///
+/// ```gleam
+/// import pears
+/// import pears/combinators.{pair}
+///
+/// let identifier = recognize(pair(letter(), alphanumeric()))
+/// assert pears.parse_string_all("x1", identifier) == Ok("x1")
+/// ```
+pub fn recognize(parser: Parser(Char, a)) -> Parser(Char, String) {
+  combinators.recognize(parser)
+  |> map(string.concat)
 }
 
 /// Parses `start` and the rest of the line, returning the text after `start`.
