@@ -9,7 +9,8 @@
 //// - **Numbers**: [`natural`](#natural), [`integer`](#integer),
 ////   [`float`](#float)
 //// - **Whitespace**: [`whitespace0`](#whitespace0),
-////   [`whitespace1`](#whitespace1), [`lexeme`](#lexeme)
+////   [`whitespace1`](#whitespace1), [`newline`](#newline),
+////   [`lexeme`](#lexeme)
 //// - **Errors**: [`format_error`](#format_error),
 ////   [`line_column`](#line_column)
 ////
@@ -84,6 +85,19 @@ pub fn whitespace0() -> Parser(Char, List(Char)) {
 /// ```
 pub fn whitespace1() -> Parser(Char, List(Char)) {
   many1(whitespace())
+}
+
+/// Parses a line break, `\n` or `\r\n`. Strings are split into graphemes, so
+/// `\r\n` is a single character and `token("\n")` doesn't match it.
+///
+/// ```gleam
+/// import pears
+///
+/// assert pears.parse_string_all("\r\n", newline()) == Ok("\r\n")
+/// ```
+pub fn newline() -> Parser(Char, Char) {
+  one_of(["\n", "\r\n"])
+  |> label("newline")
 }
 
 /// Runs the parser and skips any whitespace after it.

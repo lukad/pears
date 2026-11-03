@@ -7,7 +7,7 @@ import helpers.{should_fail_with, should_not_parse, should_parse}
 import pears.{Custom, UnexpectedToken, parse_string_all}
 import pears/chars.{
   alphanumeric, case_insensitive, float, hex_digit, integer, letter, lexeme,
-  line_comment, natural, string, string_literal, whitespace,
+  line_comment, natural, newline, string, string_literal, whitespace,
 }
 import pears/combinators.{pair}
 
@@ -62,6 +62,14 @@ pub fn float_test() {
   parse_string_all("1.", float()) |> should.be_error()
   parse_string_all(".5", float()) |> should.be_error()
   parse_string_all("1.5e", float()) |> should.be_error()
+}
+
+pub fn newline_test() {
+  newline()
+  |> should_parse("\n", "\n")
+  |> should_parse("\r\n", "\r\n")
+  |> should_not_parse("\r")
+  |> should_fail_with("x", UnexpectedToken(0, ["newline"], "x"))
 }
 
 pub fn whitespace_test() {
