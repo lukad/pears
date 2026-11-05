@@ -10,7 +10,7 @@ import pears.{type Parser, type Span, Span}
 import pears/chars.{type Char}
 import pears/combinators.{
   between, chain_left, choice, label, lazy, many0, map, pair, recognize, replace,
-  satisfying, skip_then, succeed, then, token, with_span,
+  select, skip_then, succeed, then, token, with_span,
 }
 
 pub type Token {
@@ -64,21 +64,8 @@ fn lexer() -> Parser(Char, List(#(Token, Span))) {
 
 // Parser: tokens to AST
 
-/// Parses a token that `f` turns into `Ok(value)`.
-fn match_token(
-  name: String,
-  f: fn(Token) -> Result(a, Nil),
-) -> Parser(Token, a) {
-  {
-    use token <- then(satisfying(fn(token) { result.is_ok(f(token)) }))
-    let assert Ok(value) = f(token)
-    succeed(value)
-  }
-  |> label(name)
-}
-
 fn identifier() -> Parser(Token, String) {
-  use token <- match_token("identifier")
+  use token <- select("identifier")
   case token {
     Identifier(name) -> Ok(name)
     _ -> Error(Nil)
@@ -86,7 +73,7 @@ fn identifier() -> Parser(Token, String) {
 }
 
 fn number() -> Parser(Token, Int) {
-  use token <- match_token("number")
+  use token <- select("number")
   case token {
     Number(value) -> Ok(value)
     _ -> Error(Nil)

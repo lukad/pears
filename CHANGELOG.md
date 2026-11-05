@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `select`, which matches a lexer's tokens by pattern and returns the value
+  they hold, e.g. the `Int` in a `Number(Int)` token.
+
 ## v1.1.0 - 2026-11-03
 
 ### Added

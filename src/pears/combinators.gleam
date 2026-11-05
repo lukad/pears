@@ -3,8 +3,8 @@
 //// introduction, see the `pears` module.
 ////
 //// - **Single tokens**: [`token`](#token), [`any`](#any),
-////   [`satisfying`](#satisfying), [`one_of`](#one_of), [`none_of`](#none_of),
-////   [`eof`](#eof)
+////   [`satisfying`](#satisfying), [`select`](#select), [`one_of`](#one_of),
+////   [`none_of`](#none_of), [`eof`](#eof)
 //// - **Sequences**: [`then`](#then), [`pair`](#pair), [`seq`](#seq),
 ////   [`then_skip`](#then_skip), [`skip_then`](#skip_then),
 ////   [`between`](#between)
@@ -394,6 +394,33 @@ pub fn satisfying(predicate: fn(i) -> Bool) -> Parser(i, i) {
         case predicate(token) {
           True -> ok(input.next(in), token)
           False -> Error(UnexpectedToken(input.position(in), [], token))
+        }
+    }
+  })
+}
+
+/// Parses a token that `fun` accepts and returns the value it extracts, e.g. to
+/// match a lexer's tokens by pattern. If `fun` returns `Error(Nil)`, the error
+/// expects `name`.
+///
+/// ```gleam,ignore
+/// let number = select("number", fn(token) {
+///   case token {
+///     Number(n) -> Ok(n)
+///     _ -> Error(Nil)
+///   }
+/// })
+/// ```
+pub fn select(name: String, fun: fn(i) -> Result(a, Nil)) -> Parser(i, a) {
+  let expected = [name]
+  new_parser(fn(in: Input(i)) {
+    case input.tokens(in) {
+      [] -> Error(UnexpectedEndOfInput(input.position(in), expected))
+      [token, ..] ->
+        case fun(token) {
+          Ok(value) -> ok(input.next(in), value)
+          Error(Nil) ->
+            Error(UnexpectedToken(input.position(in), expected, token))
         }
     }
   })

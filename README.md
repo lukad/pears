@@ -55,7 +55,7 @@ Here a lexer turns a string into tokens and a parser turns those into an AST:
 import pears.{type Parser}
 import pears/chars.{type Char}
 import pears/combinators.{
-  any, chain_left, choice, many0, map, replace, skip_then, token, try_map,
+  chain_left, choice, many0, map, replace, select, skip_then, token,
 }
 
 pub type Token {
@@ -75,10 +75,10 @@ fn lexer() -> Parser(Char, List(Token)) {
 
 fn parser() -> Parser(Token, Expr) {
   let literal =
-    try_map(any(), fn(token) {
+    select("number", fn(token) {
       case token {
         Number(n) -> Ok(Literal(n))
-        _ -> Error("expected a number")
+        _ -> Error(Nil)
       }
     })
   chain_left(literal, replace(token(Plus), Add))

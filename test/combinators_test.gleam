@@ -6,8 +6,9 @@ import pears.{Span}
 import pears/chars
 import pears/combinators.{
   any, at_least, at_most, between, exactly, many0, many1, many_till,
-  not_followed_by, one_of, optional, pair, peek, recognize, sep_by0, sep_end_by0,
-  sep_end_by1, seq, skip_then, succeed, then, then_skip, token, with_span,
+  not_followed_by, one_of, optional, pair, peek, recognize, select, sep_by0,
+  sep_end_by0, sep_end_by1, seq, skip_then, succeed, then, then_skip, token,
+  with_span,
 }
 
 pub fn pair_test() {
@@ -22,6 +23,20 @@ pub fn one_of_test() {
   |> should_parse("ab", "a")
   |> should_parse("bc", "b")
   |> should_not_parse("d")
+}
+
+pub fn select_test() {
+  select("a or b", fn(c) {
+    case c {
+      "a" -> Ok(1)
+      "b" -> Ok(2)
+      _ -> Error(Nil)
+    }
+  })
+  |> should_parse("ab", 1)
+  |> should_parse("ba", 2)
+  |> should_not_parse("c")
+  |> should_not_parse("")
 }
 
 pub fn many_test() {

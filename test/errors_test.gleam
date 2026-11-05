@@ -4,8 +4,8 @@ import pears.{Custom, UnexpectedEndOfInput, UnexpectedToken}
 import pears/chars
 import pears/combinators.{
   between, choice, eof, exactly, fail, hidden, label, many0, many_till, none_of,
-  not_followed_by, one_of, optional, or, pair, peek, satisfying, sep_by0, seq,
-  skip_then, succeed, then, then_skip, token, try_map,
+  not_followed_by, one_of, optional, or, pair, peek, satisfying, select, sep_by0,
+  seq, skip_then, succeed, then, then_skip, token, try_map,
 }
 
 pub fn just_test() {
@@ -71,6 +71,22 @@ pub fn one_of_test() {
   one_of(["+", "-"])
   |> should_fail_with("x", UnexpectedToken(0, ["\"+\"", "\"-\""], "x"))
   |> should_fail_with("", UnexpectedEndOfInput(0, ["\"+\"", "\"-\""]))
+}
+
+pub fn select_test() {
+  let parser =
+    select("vowel", fn(c) {
+      case c {
+        "a" | "e" -> Ok(c)
+        _ -> Error(Nil)
+      }
+    })
+  parser
+  |> should_fail_with("x", UnexpectedToken(0, ["vowel"], "x"))
+  |> should_fail_with("", UnexpectedEndOfInput(0, ["vowel"]))
+
+  or(parser, token("1"))
+  |> should_fail_with("x", UnexpectedToken(0, ["vowel", "\"1\""], "x"))
 }
 
 pub fn none_of_test() {
